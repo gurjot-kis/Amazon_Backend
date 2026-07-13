@@ -1,10 +1,9 @@
 import jwt from "jsonwebtoken";
 import { isBlacklisted } from "../utils/token-blacklist.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
-
 export const authMiddleware = (req, res, next) => {
   try {
+    const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
     const authHeader = req.headers.authorization || "";
     const [scheme, token] = authHeader.split(" ");
 
@@ -35,10 +34,13 @@ export const authMiddleware = (req, res, next) => {
 
     return next();
   } catch (_err) {
+    console.error("JWT Verification failed:", _err);
     return res.status(401).json({
       success: false,
       code: 401,
-      message: "Unauthorized: invalid token",
+      message: process.env.NODE_ENV === "development"
+        ? `Unauthorized: ${_err.message}`
+        : "Unauthorized: invalid token",
       data: null,
     });
   }

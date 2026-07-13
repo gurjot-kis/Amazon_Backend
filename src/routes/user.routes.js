@@ -1,9 +1,45 @@
 import express from "express";
 import { UserController } from "../controllers/user.controller.js";
+import * as ChatUserController from "../controllers/chat-user.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { authorizeRoles, ROLES } from "../middlewares/role.middleware.js";
+import { uploadMedia } from "../middlewares/upload.middleware.js";
 
 const router = express.Router();
+
+router.get(
+  "/users/chat-search",
+  authMiddleware,
+  ChatUserController.getAllUsers
+);
+
+router.post(
+  "/users/register",
+  ChatUserController.register
+);
+
+router.post(
+  "/users/login",
+  ChatUserController.login
+);
+
+router.get(
+  "/users/profile-details",
+  authMiddleware,
+  ChatUserController.getUserProfile
+);
+
+router.post(
+  "/users/upload-avatar",
+  uploadMedia.single("file"),
+  ChatUserController.uploadAvatarFile
+);
+
+router.put(
+  "/users/profile",
+  authMiddleware,
+  ChatUserController.updateProfile
+);
 
 /**
  * User status: 1 = Active, 0 = Inactive

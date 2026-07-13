@@ -1,5 +1,6 @@
 import multer from "multer";
 import path from "path";
+import fs from "fs";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 
@@ -68,3 +69,31 @@ export const uploadWarehouseImage = multer({
   fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB per file
 }).single("warehouse_image");
+
+const ensureDir = (dirPath) => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+};
+
+const chatStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    let folder = path.join(UPLOADS_ROOT, "chat/files");
+    
+    if (file.mimetype.startsWith("image/")) {
+      folder = path.join(UPLOADS_ROOT, "chat/images");
+    } else if (file.mimetype.startsWith("video/")) {
+      folder = path.join(UPLOADS_ROOT, "chat/videos");
+    }
+    
+    ensureDir(folder);
+    cb(null, folder);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${uniqueSuffix}${ext}`);
+  },
+});
+
+export const uploadMedia = multer({ storage: chatStorage });

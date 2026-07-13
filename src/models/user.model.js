@@ -44,6 +44,9 @@ const UserSchema = new mongoose.Schema(
       index: true,
     },
     profilePicture: { type: String, default: "" },
+    avatar: { type: String, default: "" },
+    bio: { type: String, default: "Hey there! I am using Chat." },
+    gender: { type: String, default: "" },
     // Optional for social login users (required for local auth).
     passwordHash: { type: String, default: "" },
     // Forgot-password OTP flow

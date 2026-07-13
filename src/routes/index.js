@@ -12,6 +12,8 @@ import orderRoutes from './order.routes.js';
 import bannerRoutes from './banner.routes.js';
 import cartSettingsRoutes from './cart-settings.routes.js';
 import vendorRoutes from './vendor/index.js';
+import conversationRoutes from './conversation.routes.js';
+import messageRoutes from './message.routes.js';
 
 const router = express.Router();
 
@@ -34,5 +36,7 @@ router.use(orderRoutes);
 router.use(bannerRoutes);
 router.use(cartSettingsRoutes);
 router.use('/vendor', vendorRoutes);
+router.use('/conversations', conversationRoutes);
+router.use('/messages', messageRoutes);
 
 export default router;

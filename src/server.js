@@ -1,14 +1,24 @@
-import dotenv from 'dotenv';
-import connectDB from './config/db.js';
-import app from './app.js';
+import dotenv from "dotenv";
+import app from "./app.js";
+import connectDB from "./config/db.js";
+import http from "http";
+import { initSocket } from "./config/socket.js";
+import registerSocketHandlers from "./socket/socketHandler.js";
 
 dotenv.config();
 
-
 const PORT = process.env.PORT || 5000;
 
-connectDB();
+const startServer = async () => {
+  await connectDB();
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+  const server = http.createServer(app);
+  const io = initSocket(server);
+
+  registerSocketHandlers(io);
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+};
+
+startServer();
