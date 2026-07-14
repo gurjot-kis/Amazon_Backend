@@ -19,6 +19,24 @@ router.delete(
   ConversationController.deleteConversation
 );
 
+router.post(
+  "/:conversationId/end-chat",
+  authMiddleware,
+  ConversationController.endChat
+);
+
+router.post(
+  "/:conversationId/rate",
+  authMiddleware,
+  ConversationController.rateConversation
+);
+
+router.post(
+  "/:conversationId/backup-and-remove",
+  authMiddleware,
+  ConversationController.backupAndRemoveConversation
+);
+
 router.get(
   "/:conversationId/messages",
   authMiddleware,

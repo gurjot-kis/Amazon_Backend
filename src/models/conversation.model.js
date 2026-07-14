@@ -44,6 +44,37 @@ const conversationSchema = new mongoose.Schema(
         ref: "User",
       },
     ],
+
+    isEnded: {
+      type: Boolean,
+      default: false,
+    },
+
+    endedAt: {
+      type: Date,
+      default: null,
+    },
+
+    rating: {
+      type: Number,
+      min: 1,
+      max: 5,
+    },
+
+    feedback: {
+      type: String,
+      default: "",
+    },
+
+    ratedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    ratedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
-import { ConversationModel, UserModel, MessageModel } from "../models/index.js";
+import { ConversationModel, UserModel, MessageModel, BackupMessageModel } from "../models/index.js";
 import { isUserOnline } from "./socket.service.js";
+import * as BackupService from "./backup.service.js";
 
 export const findOrCreatePrivateConversation = async (senderId, receiverId) => {
   if (!receiverId) {
@@ -76,6 +77,7 @@ export const getMyConversations = async (userId) => {
     .find({
       participants: userId,
       deletedBy: { $ne: userId },
+      isEnded: { $ne: true },
     })
     .populate({
       path: "participants",
@@ -147,4 +149,59 @@ export const deleteConversation = async (userId, conversationId) => {
   }
 
   return { success: true };
+};
+
+export const endChat = async (userId, conversationId) => {
+  if (!mongoose.Types.ObjectId.isValid(conversationId)) {
+    throw new Error("Invalid conversation ID");
+  }
+
+  const conversation = await ConversationModel.findOne({
+    _id: conversationId,
+    participants: userId,
+  });
+
+  if (!conversation) {
+    throw new Error("Conversation not found");
+  }
+
+  if (conversation.isEnded) {
+    throw new Error("Chat has already been ended");
+  }
+
+  conversation.isEnded = true;
+  conversation.endedAt = new Date();
+  await conversation.save();
+
+  return conversation;
+};
+
+export const rateConversation = async (userId, conversationId, rating, feedback = "") => {
+  if (!mongoose.Types.ObjectId.isValid(conversationId)) {
+    throw new Error("Invalid conversation ID");
+  }
+
+  const conversation = await ConversationModel.findOne({
+    _id: conversationId,
+    participants: userId,
+    isEnded: true,
+  });
+
+  if (!conversation) {
+    throw new Error("Conversation not found or not ended");
+  }
+
+  conversation.rating = rating;
+  conversation.feedback = feedback || "";
+  conversation.ratedBy = userId;
+  conversation.ratedAt = new Date();
+  await conversation.save();
+
+  const backup = await BackupService.backupAndRemoveConversation(
+    userId,
+    conversationId,
+    "rated_and_removed"
+  );
+
+  return { conversation, backup };
 };

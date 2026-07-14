@@ -60,6 +60,12 @@ router.get(
   UserController.getUsers
 );
 
+router.get(
+  "/users/superadmins",
+  authMiddleware,
+  UserController.getSuperadmins
+);
+
 router.post(
   "/users",
   authMiddleware,
