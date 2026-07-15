@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { ConversationModel, MessageModel, BackupMessageModel } from "../models/index.js";
 
-export const backupAndRemoveConversation = async (userId, conversationId, reason = "manual_delete") => {
+export const backupAndRemoveConversation = async (userId, conversationId, reason = "manual_delete", io = null) => {
   if (!mongoose.Types.ObjectId.isValid(conversationId)) {
     throw new Error("Invalid conversation ID");
   }
@@ -46,6 +46,16 @@ export const backupAndRemoveConversation = async (userId, conversationId, reason
 
   await MessageModel.deleteMany({ conversation: conversationId });
   await ConversationModel.findByIdAndDelete(conversationId);
+
+  // Emit socket event to notify all participants that conversation is removed
+  if (io) {
+    conversation.participants.forEach((participantId) => {
+      io.to(`user:${participantId}`).emit("conversation_removed", {
+        conversationId: conversationId,
+        reason: reason,
+      });
+    });
+  }
 
   return backup;
 };

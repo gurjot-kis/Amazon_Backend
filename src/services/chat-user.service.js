@@ -187,3 +187,34 @@ export const getAllUsersList = async (currentUserId, search = "") => {
   const users = await UserModel.find(query).sort({ name: 1 });
   return users.map(mapChatUser);
 };
+
+export const getConversationUsersList = async (currentUserId, search = "") => {
+  const ConversationModel = (await import("../models/index.js")).ConversationModel;
+
+  const conversations = await ConversationModel.find({
+    participants: currentUserId,
+    type: "private",
+  }).select("participants");
+
+  const participantIds = [...new Set(conversations.map((c) => c.participants.map((p) => p.toString())))].flat();
+
+  const uniqueUserIds = [...new Set(participantIds.filter((id) => id !== currentUserId.toString()))];
+
+  if (uniqueUserIds.length === 0) {
+    return [];
+  }
+
+  const query = {
+    _id: { $in: uniqueUserIds },
+  };
+
+  if (search.trim()) {
+    query.$or = [
+      { name: { $regex: search.trim(), $options: "i" } },
+      { phone: { $regex: search.trim(), $options: "i" } },
+    ];
+  }
+
+  const users = await UserModel.find(query).sort({ name: 1 });
+  return users.map(mapChatUser);
+};

@@ -13,6 +13,12 @@ router.get(
   ChatUserController.getAllUsers
 );
 
+router.get(
+  "/users/conversation-search",
+  authMiddleware,
+  ChatUserController.getConversationUsers
+);
+
 router.post(
   "/users/register",
   ChatUserController.register

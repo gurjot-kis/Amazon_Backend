@@ -115,3 +115,22 @@ export const getAllUsers = async (req, res) => {
     });
   }
 };
+
+export const getConversationUsers = async (req, res) => {
+  try {
+    const senderId = await getSenderId(req);
+    const search = req.query.search || "";
+    const users = await ChatUserService.getConversationUsersList(senderId, search);
+
+    return res.status(200).json({
+      success: true,
+      message: "Conversation users fetched successfully",
+      data: users,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({
+      success: false,
+      message: error.message || "Something went wrong",
+    });
+  }
+};

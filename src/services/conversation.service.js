@@ -77,7 +77,6 @@ export const getMyConversations = async (userId) => {
     .find({
       participants: userId,
       deletedBy: { $ne: userId },
-      isEnded: { $ne: true },
     })
     .populate({
       path: "participants",
@@ -176,7 +175,7 @@ export const endChat = async (userId, conversationId) => {
   return conversation;
 };
 
-export const rateConversation = async (userId, conversationId, rating, feedback = "") => {
+export const rateConversation = async (userId, conversationId, rating, feedback = "", io = null) => {
   if (!mongoose.Types.ObjectId.isValid(conversationId)) {
     throw new Error("Invalid conversation ID");
   }
@@ -200,7 +199,8 @@ export const rateConversation = async (userId, conversationId, rating, feedback 
   const backup = await BackupService.backupAndRemoveConversation(
     userId,
     conversationId,
-    "rated_and_removed"
+    "rated_and_removed",
+    io
   );
 
   return { conversation, backup };

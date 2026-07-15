@@ -117,14 +117,16 @@ export const rateConversation = async (req, res) => {
     const { conversationId } = req.params;
     const { rating, feedback } = req.body;
 
+    const io = getIO();
+
     const { conversation, backup } = await ConversationService.rateConversation(
       senderId,
       conversationId,
       rating,
-      feedback
+      feedback,
+      io
     );
 
-    const io = getIO();
     const otherParticipant = conversation.participants.find(
       (p) => p.toString() !== senderId.toString()
     );

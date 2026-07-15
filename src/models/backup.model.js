@@ -124,7 +124,7 @@ const backupMessageSchema = new mongoose.Schema(
 
     backupReason: {
       type: String,
-      enum: ["end_chat", "manual_delete", "admin_action", "rated_and_removed"],
+      enum: ["end_chat", "manual_delete", "admin_action", "rated_and_removed", "auto_cleanup_unrated"],
       default: "manual_delete",
     },
   },

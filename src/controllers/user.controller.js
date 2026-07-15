@@ -170,7 +170,7 @@ export const UserController = {
 
   getSuperadmins: async (req, res) => {
     try {
-      const superadmins = await User.find({ role: "SuperAdmin" }).select("-password");
+      const superadmins = await User.find({ role: { $regex: /superadmin/i } }).select("-password");
       return res.status(200).json({
         success: true,
         message: "Superadmins fetched successfully",
