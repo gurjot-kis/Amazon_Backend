@@ -11,7 +11,12 @@ const signAuthToken = (user) => {
   const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "365d";
   // Payload matches the keys you showed: `user_id`, `email`.
   return jwt.sign(
-    { user_id: user.user_id, email: user.email, role: user.role || "User" },
+    {
+      _id: user._id.toString(),
+      user_id: user.user_id,
+      email: user.email,
+      role: user.role || "User",
+    },
     JWT_SECRET,
     { algorithm: "HS256", expiresIn: JWT_EXPIRES_IN },
   );
@@ -54,7 +59,7 @@ const phoneToE164 = (rawPhone) => {
 
 const buildAuthResponseData = (user, token) => {
   return {
-    _id: user._id,
+    _id: user._id.toString(),
     user_id: user.user_id,
     name: user.name,
     email: user.email,

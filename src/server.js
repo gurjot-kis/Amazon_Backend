@@ -1,4 +1,4 @@
-import dotenv from "dotenv";
+import "./config/env.js"
 import app from "./app.js";
 import connectDB from "./config/db.js";
 import http from "http";
@@ -7,7 +7,6 @@ import registerSocketHandlers from "./socket/socketHandler.js";
 import cron from "node-cron";
 import * as CronService from "./services/cron.service.js";
 
-dotenv.config();
 
 const PORT = process.env.PORT || 5000;
 

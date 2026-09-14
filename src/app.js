@@ -5,6 +5,8 @@ import morgan from "morgan";
 import path from "path";
 import { fileURLToPath } from "url";
 import indexRoutes from "./routes/index.js";
+import AdminRoutes from "./routes/admin/index.js";
+import { errorHandler } from "./middlewares/error.middleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,7 +27,10 @@ app.use(
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
       ];
-      if (allowedOrigins.includes(origin) || process.env.NODE_ENV === "development") {
+      if (
+        allowedOrigins.includes(origin) ||
+        process.env.NODE_ENV === "development"
+      ) {
         return callback(null, true);
       }
       return callback(new Error("Not allowed by CORS"));
@@ -45,5 +50,8 @@ app.use(morgan("dev"));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use("/api", indexRoutes);
+app.use("/api/admin", AdminRoutes);
+
+app.use(errorHandler);
 
 export default app;

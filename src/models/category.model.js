@@ -1,20 +1,16 @@
 import mongoose from "mongoose";
-import crypto from "crypto";
 
 const CategorySchema = new mongoose.Schema(
   {
-    category_id: {
-      type: String,
-      required: true,
-      unique: true,
-      default: () => crypto.randomUUID(),
+    parent_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Category",
+      default: null,
     },
     name: {
       type: String,
       required: true,
       trim: true,
-      unique: true,
-      index: true,
     },
     description: {
       type: String,
@@ -26,11 +22,37 @@ const CategorySchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    display_order: {
+      type: Number,
+      default: 1,
+    },
+    level: {
+      type: Number,
+      required: true,
+      default: 1,
+    },
+    status: {
+      type: String,
+      enum: ["active", "inactive"],
+      default: "active",
+    },
+    is_featured: {
+      type: Boolean,
+      default: false,
+    },
+    metadata: {
+      type: Map,
+      of: String,
+      default: {},
+    },
   },
-  { timestamps: true }
+  { timestamps: true, versionKey: false },
 );
+
+CategorySchema.index({ parent_id: 1, name: 1 }, { unique: true });
+CategorySchema.index({ parent_id: 1, display_order: 1 });
+CategorySchema.index({ status: 1, is_featured: 1 });
 
 const Category = mongoose.model("Category", CategorySchema);
 
 export default Category;
-
