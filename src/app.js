@@ -6,6 +6,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import indexRoutes from "./routes/index.js";
 import AdminRoutes from "./routes/admin/index.js";
+import MobileRoutes from "./routes/mobile/index.js";
+
 import { errorHandler } from "./middlewares/error.middleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -51,6 +53,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use("/api", indexRoutes);
 app.use("/api/admin", AdminRoutes);
+app.use("/api/mobile", MobileRoutes);
 
 app.use(errorHandler);
 

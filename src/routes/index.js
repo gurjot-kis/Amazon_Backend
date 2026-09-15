@@ -1,6 +1,5 @@
 import express from 'express';
 import authRoutes from './auth.routes.js';
-import categoryRoutes from './category.routes.js';
 import subCategoryRoutes from './sub-category.routes.js';
 import productRoutes from './product.routes.js';
 import userRoutes from './user.routes.js';
@@ -24,7 +23,6 @@ router.get('/', (req, res) => {
 // POST /api/signup
 // POST /api/login
 router.use(authRoutes);
-router.use(categoryRoutes);
 router.use(subCategoryRoutes);
 router.use(productRoutes);
 router.use(userRoutes);

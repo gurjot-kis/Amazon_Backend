@@ -1,5 +1,4 @@
 import Category from "../models/category.model.js";
-import SubCategory from "../models/sub-category.model.js";
 import { paginateAggregate } from "./pagination.service.js";
 
 const normalizeName = (value) => String(value).trim();
@@ -253,6 +252,59 @@ export const CategoryService = {
     }
 
     await Category.findByIdAndDelete(id);
+  },
+
+  getAllCategoriesForUser: async ({ page = 1, limit = 10 } = {}) => {
+    const { data: roots, pagination } = await paginateAggregate(
+      Category,
+      [
+        { $match: { parent_id: null, status: "active" } },
+        { $sort: { display_order: 1 } },
+        {
+          $project: {
+            _id: 1,
+            name: 1,
+            parent_id: 1,
+            category_image: 1,
+            description: 1,
+          },
+        },
+      ],
+      { page: Number(page), limit: Number(limit) },
+    );
+
+    if (!roots.length) {
+      return { data: [], pagination };
+    }
+
+    const allActiveCategories = await Category.find({ status: "active" })
+      .select("_id name parent_id category_image description display_order")
+      .sort({ display_order: 1 })
+      .lean();
+
+    const buildTree = (parentId) => {
+      return allActiveCategories
+        .filter((c) => c.parent_id?.toString() === parentId.toString())
+        .map((c) => ({
+          _id: c._id,
+          name: c.name,
+          parent_id: c.parent_id,
+          category_image: c.category_image,
+          description: c.description,
+          children: buildTree(c._id),
+        }));
+    };
+
+    const tree = roots.map((c) => ({
+      _id: c._id,
+      name: c.name,
+      parent_id: c.parent_id,
+      category_image: c.category_image,
+      description: c.description,
+      children: buildTree(c._id),
+    }));
+
+    return { data: tree, pagination };
   },
 };
 

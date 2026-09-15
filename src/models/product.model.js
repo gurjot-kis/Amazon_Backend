@@ -3,38 +3,25 @@ import crypto from "crypto";
 
 const ProductSchema = new mongoose.Schema(
   {
-    product_id: {
-      type: String,
+    category_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Category",
       required: true,
-      unique: true,
-      default: () => crypto.randomUUID(),
     },
     name: {
       type: String,
       required: true,
       trim: true,
-      index: true,
     },
     description: {
       type: String,
       default: "",
       trim: true,
     },
-    shortDescription: {
+    short_description: {
       type: String,
       default: "",
       trim: true,
-    },
-    category_id: {
-      type: String,
-      required: true,
-      index: true,
-    },
-    sub_category_id: {
-      type: String,
-      required: false,
-      default: "",
-      index: true,
     },
     mainImage: {
       type: String,
@@ -50,39 +37,18 @@ const ProductSchema = new mongoose.Schema(
       required: true,
       trim: true,
       unique: true,
-      index: true,
     },
-    status: {
+    slug: {
       type: String,
-      enum: ["pending", "active", "rejected"],
-      default: "pending",
-      index: true,
+      unique: true,
+      trim: true,
+      lowercase: true,
     },
     currency: {
       type: String,
       required: true,
       trim: true,
       uppercase: true,
-    },
-    stock: {
-      type: Number,
-      required: true,
-      min: 0,
-      default: 0,
-    },
-    slug: {
-      type: String,
-      required: true,
-      trim: true,
-      unique: true,
-      index: true,
-    },
-    stockStatus: {
-      type: String,
-      enum: ["in_stock", "out_of_stock"],
-      required: true,
-      default: "in_stock",
-      index: true,
     },
     costPrice: {
       type: Number,
@@ -99,18 +65,54 @@ const ProductSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    stock: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
+    },
+    stockStatus: {
+      type: String,
+      enum: ["in_stock", "out_of_stock"],
+      required: true,
+      default: "in_stock",
+      index: true,
+    },
+    status: {
+      type: String,
+      enum: ["pending", "active", "rejected"],
+      default: "pending",
+      index: true,
+    },
+    user_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
     role: {
       type: String,
       enum: ["SuperAdmin", "User", "Vendor"],
       index: true,
     },
-    user_id: {
-      type: String,
-      index: true,
-    },
   },
-  { timestamps: true }
+  { timestamps: true, versionKey: false },
 );
+
+ProductSchema.pre("save", function (next) {
+  if (!this.slug && this.name) {
+    this.slug = this.name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-");
+  }
+  next();
+});
+
+ProductSchema.index({ category_id: 1 });
+ProductSchema.index({ status: 1 });
+ProductSchema.index({ sku: 1 });
+ProductSchema.index({ slug: 1 });
+ProductSchema.index({ stockStatus: 1, status: 1 });
 
 const Product = mongoose.model("Product", ProductSchema);
 
