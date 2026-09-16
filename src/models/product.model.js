@@ -36,11 +36,9 @@ const ProductSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      unique: true,
     },
     slug: {
       type: String,
-      unique: true,
       trim: true,
       lowercase: true,
     },
@@ -76,13 +74,11 @@ const ProductSchema = new mongoose.Schema(
       enum: ["in_stock", "out_of_stock"],
       required: true,
       default: "in_stock",
-      index: true,
     },
     status: {
       type: String,
       enum: ["pending", "active", "rejected"],
       default: "pending",
-      index: true,
     },
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -97,7 +93,7 @@ const ProductSchema = new mongoose.Schema(
   { timestamps: true, versionKey: false },
 );
 
-ProductSchema.pre("save", function (next) {
+ProductSchema.pre("save", async function () {
   if (!this.slug && this.name) {
     this.slug = this.name
       .toLowerCase()
@@ -105,7 +101,6 @@ ProductSchema.pre("save", function (next) {
       .replace(/[^a-z0-9\s-]/g, "")
       .replace(/\s+/g, "-");
   }
-  next();
 });
 
 ProductSchema.index({ category_id: 1 });

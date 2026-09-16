@@ -1,6 +1,23 @@
 import { sendSuccess } from "../../helpers/response.helper.js";
 import ProductService from "../../services/product-new.service.js";
 
+const normalizeFeaturedImagesInput = (value) => {
+  if (value === undefined || value === null) return undefined;
+  if (Array.isArray(value))
+    return value.filter((v) => typeof v === "string" && v.trim() !== "");
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value); // formdata sends arrays as JSON string sometimes
+      return Array.isArray(parsed)
+        ? parsed.filter((v) => typeof v === "string" && v.trim() !== "")
+        : undefined;
+    } catch {
+      return value.trim() !== "" ? [value.trim()] : undefined;
+    }
+  }
+  return undefined;
+};
+
 const applyProductUploads = (body, files) => {
   const next = { ...(body || {}) };
   const mainImageFile = files?.mainImage?.[0];
@@ -44,6 +61,7 @@ export const ProductController = {
         costPrice,
         sellingPrice,
         price,
+        stock,
         mainImage,
         featuredImages,
       } = body;
@@ -58,6 +76,7 @@ export const ProductController = {
         costPrice,
         sellingPrice,
         price,
+        stock,
         mainImage,
         featuredImages,
         user_id: req.user._id,

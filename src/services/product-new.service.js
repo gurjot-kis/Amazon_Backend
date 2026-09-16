@@ -14,6 +14,7 @@ export const ProductService = {
     costPrice,
     sellingPrice,
     price,
+    stock,
     mainImage,
     featuredImages,
     user_id,
@@ -29,16 +30,16 @@ export const ProductService = {
       throw new Error("Selling price is required");
     if (price === undefined) throw new Error("Price is required");
 
-    // validate category exists and is active
     const category = await Category.findById(category_id)
       .select("_id status")
       .lean();
     if (!category) throw new Error("Category not found");
     if (category.status !== "active") throw new Error("Category is not active");
 
-    // check duplicate SKU
     const existingSku = await Product.findOne({ sku: sku.trim() }).lean();
     if (existingSku) throw new Error("Product with this SKU already exists");
+
+    const stockCount = stock !== undefined ? Number(stock) : 0;
 
     const product = new Product({
       name: normalizeName(name),
@@ -54,14 +55,13 @@ export const ProductService = {
       price: Number(price),
       mainImage,
       featuredImages: featuredImages || [],
-      stock: 0,
-      stockStatus: "in_stock",
+      stock: stockCount,
+      stockStatus: stockCount > 0 ? "in_stock" : "out_of_stock",
       status: "pending",
       user_id,
       role,
     });
 
-    // slug auto set by pre("save") hook
     await product.save();
 
     return product;
