@@ -1,4 +1,5 @@
 import { UserService } from "../services/user.service.js";
+import User from "../models/user.model.js";
 
 const sendError = (res, code, message) => {
   return res.status(code).json({
@@ -164,6 +165,22 @@ export const UserController = {
       }
 
       return sendError(res, 400, message);
+    }
+  },
+
+  getSuperadmins: async (req, res) => {
+    try {
+      const superadmins = await User.find({ role: { $regex: /superadmin/i } }).select("-password");
+      return res.status(200).json({
+        success: true,
+        message: "Superadmins fetched successfully",
+        data: superadmins,
+      });
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
     }
   },
 };

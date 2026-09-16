@@ -6,15 +6,19 @@ import { sendEmail } from "../utils/email.js";
 import { sendTwilioSms } from "../utils/twilio-sms.js";
 import { assertUserCanLogin, mapUserStatus } from "../utils/user-status.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "365d";
-
 const signAuthToken = (user) => {
+  const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+  const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "365d";
   // Payload matches the keys you showed: `user_id`, `email`.
   return jwt.sign(
-    { user_id: user.user_id, email: user.email, role: user.role || "User" },
+    {
+      _id: user._id.toString(),
+      user_id: user.user_id,
+      email: user.email,
+      role: user.role || "User",
+    },
     JWT_SECRET,
-    { algorithm: "HS256", expiresIn: JWT_EXPIRES_IN }
+    { algorithm: "HS256", expiresIn: JWT_EXPIRES_IN },
   );
 };
 
@@ -37,9 +41,16 @@ const findUserByPhone = async (rawPhone) => {
 
 const phoneToE164 = (rawPhone) => {
   const d = digitsOnly(rawPhone);
-  const cc = String(process.env.TWILIO_DEFAULT_COUNTRY_CODE || "91").replace(/\D/g, "");
+  const cc = String(process.env.TWILIO_DEFAULT_COUNTRY_CODE || "91").replace(
+    /\D/g,
+    "",
+  );
   if (!d) return "";
-  if (String(rawPhone || "").trim().startsWith("+")) {
+  if (
+    String(rawPhone || "")
+      .trim()
+      .startsWith("+")
+  ) {
     return `+${d}`;
   }
   if (d.length === 10) return `+${cc}${d}`;
@@ -48,6 +59,7 @@ const phoneToE164 = (rawPhone) => {
 
 const buildAuthResponseData = (user, token) => {
   return {
+    _id: user._id.toString(),
     user_id: user.user_id,
     name: user.name,
     email: user.email,
@@ -56,88 +68,6 @@ const buildAuthResponseData = (user, token) => {
     profilePicture: user.profilePicture || "",
     token,
   };
-};
-
-const sendLoginTwilioOtpToUser = async (user, phone) => {
-  assertUserCanLogin(user);
-
-  const otp = String(Math.floor(100000 + Math.random() * 900000));
-  const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-
-  user.loginTwilioOtp = otp;
-  user.loginTwilioOtpExpiry = otpExpiry;
-  await user.save();
-
-  const to = phoneToE164(phone);
-  try {
-    const result = await sendTwilioSms(
-      to,
-      `Your login OTP is ${otp}. It is valid for 10 minutes. Do not share this code.`
-    );
-
-    if (!result.sent) {
-      user.loginTwilioOtp = null;
-      user.loginTwilioOtpExpiry = null;
-      await user.save();
-      throw new Error("SMS could not be sent. Check Twilio configuration.");
-    }
-  } catch (e) {
-    user.loginTwilioOtp = null;
-    user.loginTwilioOtpExpiry = null;
-    await user.save();
-    if (e?.message === "SMS could not be sent. Check Twilio configuration.") throw e;
-    throw new Error(e?.message || "Failed to send SMS");
-  }
-
-  return { phone: to };
-};
-
-const findOrCreateUserByPhone = async (rawPhone) => {
-  let user = await findUserByPhone(rawPhone);
-  if (user) {
-    return { user, is_new_user: false };
-  }
-
-  const e164 = phoneToE164(rawPhone);
-  const digits = digitsOnly(rawPhone);
-  const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
-  let email = `phone_${last10 || digits}@otp.local`;
-
-  const emailTaken = await User.findOne({ email }).exec();
-  if (emailTaken) {
-    email = `phone_${last10 || digits}_${crypto.randomBytes(4).toString("hex")}@otp.local`;
-  }
-
-  user = await User.create({
-    name: "User",
-    email,
-    phone: e164,
-    role: "User",
-    passwordHash: "",
-  });
-
-  return { user, is_new_user: true };
-};
-
-const verifyLoginTwilioOtp = async (user, otp) => {
-  if (!user.loginTwilioOtp || !user.loginTwilioOtpExpiry) {
-    throw new Error("OTP not requested or already used");
-  }
-  if (new Date() > user.loginTwilioOtpExpiry) {
-    throw new Error("OTP has expired");
-  }
-  if (user.loginTwilioOtp !== String(otp).trim()) {
-    throw new Error("Invalid OTP");
-  }
-
-  assertUserCanLogin(user);
-
-  user.loginTwilioOtp = null;
-  user.loginTwilioOtpExpiry = null;
-  await user.save();
-
-  const token = signAuthToken(user);
-  return buildAuthResponseData(user, token);
 };
 
 export const AuthService = {
@@ -266,7 +196,9 @@ export const AuthService = {
       throw new Error("Password must be at least 6 characters");
     }
 
-    const user = await User.findOne({ resetToken: String(resetToken).trim() }).exec();
+    const user = await User.findOne({
+      resetToken: String(resetToken).trim(),
+    }).exec();
     if (!user) throw new Error("Invalid or expired reset token");
     if (!user.resetTokenExpiry || new Date() > user.resetTokenExpiry) {
       throw new Error("Invalid or expired reset token");
@@ -318,22 +250,38 @@ export const AuthService = {
       throw new Error("Invalid credentials");
     }
 
-    return sendLoginTwilioOtpToUser(user, phone);
-  },
+    assertUserCanLogin(user);
 
-  /** Phone-only OTP: registers if new, otherwise sends login OTP. */
-  loginTwilioOtp: async ({ phone }) => {
-    if (!phone || !String(phone).trim()) {
-      throw new Error("phone is required");
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    user.loginTwilioOtp = otp;
+    user.loginTwilioOtpExpiry = otpExpiry;
+    await user.save();
+
+    const to = phoneToE164(phone);
+    try {
+      const result = await sendTwilioSms(
+        to,
+        `Your login OTP is ${otp}. It is valid for 10 minutes. Do not share this code.`,
+      );
+
+      if (!result.sent) {
+        user.loginTwilioOtp = null;
+        user.loginTwilioOtpExpiry = null;
+        await user.save();
+        throw new Error("SMS could not be sent. Check Twilio configuration.");
+      }
+    } catch (e) {
+      user.loginTwilioOtp = null;
+      user.loginTwilioOtpExpiry = null;
+      await user.save();
+      if (e?.message === "SMS could not be sent. Check Twilio configuration.")
+        throw e;
+      throw new Error(e?.message || "Failed to send SMS");
     }
 
-    const { user, is_new_user } = await findOrCreateUserByPhone(phone);
-    const result = await sendLoginTwilioOtpToUser(user, phone);
-
-    return {
-      ...result,
-      is_new_user,
-    };
+    return { phone: phoneToE164(phone) };
   },
 
   loginTwilioVerify: async ({ phone, password, otp }) => {
@@ -351,23 +299,25 @@ export const AuthService = {
       throw new Error("Invalid credentials");
     }
 
-    return verifyLoginTwilioOtp(user, otp);
-  },
-
-  /** Verify phone-only OTP login (no password). */
-  loginTwilioOtpVerify: async ({ phone, otp }) => {
-    if (!phone || !otp) {
-      throw new Error("phone and otp are required");
+    if (!user.loginTwilioOtp || !user.loginTwilioOtpExpiry) {
+      throw new Error("OTP not requested or already used");
+    }
+    if (new Date() > user.loginTwilioOtpExpiry) {
+      throw new Error("OTP has expired");
+    }
+    if (user.loginTwilioOtp !== String(otp).trim()) {
+      throw new Error("Invalid OTP");
     }
 
-    const user = await findUserByPhone(phone);
-    if (!user) {
-      throw new Error("Invalid credentials");
-    }
+    assertUserCanLogin(user);
 
-    return verifyLoginTwilioOtp(user, otp);
+    user.loginTwilioOtp = null;
+    user.loginTwilioOtpExpiry = null;
+    await user.save();
+
+    const token = signAuthToken(user);
+    return buildAuthResponseData(user, token);
   },
 };
 
 export default AuthService;
-

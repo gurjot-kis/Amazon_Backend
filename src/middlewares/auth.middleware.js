@@ -28,13 +28,19 @@ export const authMiddleware = (req, res, next) => {
 
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = {
+      _id: decoded._id,
       user_id: decoded.user_id,
       email: decoded.email,
       role: decoded.role || "User",
     };
 
     return next();
-  } catch (_err) {
+  } catch (err) {
+    console.error("========== JWT ERROR ==========");
+    console.error("Name:", err.name);
+    console.error("Message:", err.message);
+    console.error("================================");
+
     return res.status(401).json({
       success: false,
       code: 401,
@@ -72,4 +78,3 @@ export const optionalAuthMiddleware = (req, res, next) => {
 };
 
 export default authMiddleware;
-
