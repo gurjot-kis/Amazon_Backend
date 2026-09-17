@@ -48,6 +48,18 @@ export const CategoryController = {
     }
   },
 
+  getLeafCategories: async (req, res, next) => {
+    try {
+      const categories = await CategoryService.getLeafCategories();
+      return sendSuccess(res, {
+        message: "Leaf categories fetched successfully",
+        data: categories,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   getCategoryById: async (req, res, next) => {
     try {
       const { id } = req.params;

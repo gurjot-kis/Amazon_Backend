@@ -306,6 +306,24 @@ export const CategoryService = {
 
     return { data: tree, pagination };
   },
+
+  getLeafCategories: async () => {
+    const allCategories = await Category.find({ status: "active" })
+      .select("_id name parent_id")
+      .lean();
+
+    const parentIds = new Set(
+      allCategories
+        .filter((c) => c.parent_id)
+        .map((c) => c.parent_id.toString()),
+    );
+
+    const leafCategories = allCategories.filter(
+      (c) => !parentIds.has(c._id.toString()),
+    );
+
+    return leafCategories;
+  },
 };
 
 export default CategoryService;

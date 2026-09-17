@@ -8,6 +8,7 @@ const router = express.Router();
 router.use(authMiddleware, authorizeRoles(ROLES.SUPER_ADMIN));
 
 router.get("/list", CategoryController.getAllCategories);
+router.get("/leaf", CategoryController.getLeafCategories);
 router.post("/create", uploadCategoryImage, CategoryController.createCategory);
 
 router.get("/:id", CategoryController.getCategoryById);
