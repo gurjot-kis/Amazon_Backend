@@ -136,6 +136,7 @@ export const CategoryService = {
           parent_id: c.parent_id,
           category_image: c.category_image,
           description: c.description,
+          level: c.level,
           status: c.status,
           children: buildTree(c._id),
         }));
@@ -147,6 +148,7 @@ export const CategoryService = {
       parent_id: c.parent_id,
       category_image: c.category_image,
       description: c.description,
+      level: c.level,
       status: c.status,
       children: buildTree(c._id),
     }));

@@ -19,9 +19,9 @@ export const paginateAggregate = async (model, pipeline, { page = 1, limit = 10 
       total,
       page,
       limit,
-      total_pages: Math.ceil(total / limit),
-      has_next: page < Math.ceil(total / limit),
-      has_prev: page > 1,
+      totalPages: Math.ceil(total / limit),
+      hasNextPage: page < Math.ceil(total / limit),
+      hasPrevPage: page > 1,
     },
   };
 };
