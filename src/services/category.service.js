@@ -61,6 +61,12 @@ export const CategoryService = {
     if (filter_status) baseMatch.status = filter_status;
     if (filter_level !== "") baseMatch.level = Number(filter_level);
 
+    const maxLevelDoc = await Category.findOne()
+      .sort({ level: -1 })
+      .select("level")
+      .lean();
+    const maxLevel = maxLevelDoc?.level ?? 1;
+
     // ─── FLAT MODE (search or level filter active) ───────────────────
     if (search || filter_level) {
       const { data, pagination } = await paginateAggregate(
@@ -83,7 +89,7 @@ export const CategoryService = {
         { page: Number(page), limit: Number(limit) },
       );
 
-      return { data, pagination };
+      return { data, pagination, maxLevel };
     }
 
     // ─── TREE MODE (normal browse, filter_status only or nothing) ────
@@ -111,7 +117,7 @@ export const CategoryService = {
     );
 
     if (!roots.length) {
-      return { data: [], pagination };
+      return { data: [], pagination, maxLevel };
     }
 
     const allCategories = await Category.find(
@@ -153,7 +159,7 @@ export const CategoryService = {
       children: buildTree(c._id),
     }));
 
-    return { data: tree, pagination };
+    return { data: tree, pagination, maxLevel };
   },
 
   getCategoryById: async (id) => {

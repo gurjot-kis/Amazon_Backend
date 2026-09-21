@@ -29,7 +29,7 @@ export const CategoryController = {
     try {
       const { page, limit, search, status, level } = req.query;
 
-      const { data, pagination } =
+      const { data, pagination, maxLevel } =
         await CategoryService.getAllCategoriesForAdmin({
           page,
           limit,
@@ -42,6 +42,7 @@ export const CategoryController = {
         message: "Categories fetched successfully",
         data,
         pagination,
+        maxLevel
       });
     } catch (error) {
       next(error);
