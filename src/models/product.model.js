@@ -88,6 +88,17 @@ const ProductSchema = new mongoose.Schema(
       enum: ["SuperAdmin", "User", "Vendor"],
       index: true,
     },
+
+    hasVariants: {
+      type: Boolean,
+      default: false,
+    },
+    variantTypes: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "VariantType",
+      },
+    ],
   },
   { timestamps: true, versionKey: false },
 );
@@ -104,9 +115,10 @@ ProductSchema.pre("save", async function () {
 
 ProductSchema.index({ category_id: 1 });
 ProductSchema.index({ status: 1 });
-ProductSchema.index({ sku: 1 });
-ProductSchema.index({ slug: 1 });
+ProductSchema.index({ sku: 1 }, { unique: true });
+ProductSchema.index({ slug: 1 }, { unique: true });
 ProductSchema.index({ stockStatus: 1, status: 1 });
+ProductSchema.index({ hasVariants: 1 });
 
 const Product = mongoose.model("Product", ProductSchema);
 

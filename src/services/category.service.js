@@ -332,6 +332,33 @@ export const CategoryService = {
 
     return leafCategories;
   },
+
+  getAllCategoriesSelectList: async () => {
+    const allCategories = await Category.find({ status: "active" })
+      .select("_id name parent_id level") // add parent_id
+      .lean();
+
+    const flatten = (parentId = null, depth = 0) => {
+      return allCategories
+        .filter((c) =>
+          parentId === null
+            ? c.parent_id === null
+            : c.parent_id?.toString() === parentId.toString(),
+        )
+        .flatMap((c) => [
+          {
+            _id: c._id,
+            name: c.name,
+            level: c.level,
+            depth,
+            parent_id: c.parent_id,
+          },
+          ...flatten(c._id, depth + 1),
+        ]);
+    };
+
+    return flatten();
+  },
 };
 
 export default CategoryService;

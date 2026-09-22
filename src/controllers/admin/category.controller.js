@@ -42,7 +42,7 @@ export const CategoryController = {
         message: "Categories fetched successfully",
         data,
         pagination,
-        maxLevel
+        maxLevel,
       });
     } catch (error) {
       next(error);
@@ -54,6 +54,18 @@ export const CategoryController = {
       const categories = await CategoryService.getLeafCategories();
       return sendSuccess(res, {
         message: "Leaf categories fetched successfully",
+        data: categories,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  getCategoriesSelectList: async (req, res, next) => {
+    try {
+      const categories = await CategoryService.getAllCategoriesSelectList();
+      return sendSuccess(res, {
+        message: "Categories fetched successfully",
         data: categories,
       });
     } catch (error) {
