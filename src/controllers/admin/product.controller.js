@@ -24,6 +24,9 @@ export const ProductController = {
         stock,
         mainImage,
         featuredImages,
+        hasVariants,
+        variantTypes,
+        variants,
       } = body;
 
       const product = await ProductService.createProduct({
@@ -41,6 +44,17 @@ export const ProductController = {
         featuredImages,
         user_id: req.user._id,
         role: req.user.role,
+        hasVariants: hasVariants === "true" || hasVariants === true,
+        variantTypes: variantTypes
+          ? typeof variantTypes === "string"
+            ? JSON.parse(variantTypes)
+            : variantTypes
+          : [],
+        variants: variants
+          ? typeof variants === "string"
+            ? JSON.parse(variants)
+            : variants
+          : [],
       });
 
       return sendSuccess(res, {
@@ -92,7 +106,6 @@ export const ProductController = {
     try {
       const { id } = req.params;
 
-      // fetch existing first — needed for featuredImages fallback
       const existing = await Product.findById(id)
         .select("featuredImages mainImage")
         .lean();
@@ -115,6 +128,9 @@ export const ProductController = {
         stock,
         mainImage,
         featuredImages,
+        hasVariants,
+        variantTypes,
+        variants,
       } = body;
 
       const updated = await ProductService.updateProduct(id, {
@@ -130,6 +146,17 @@ export const ProductController = {
         stock,
         mainImage,
         featuredImages,
+        hasVariants: hasVariants === "true" || hasVariants === true,
+        variantTypes: variantTypes
+          ? typeof variantTypes === "string"
+            ? JSON.parse(variantTypes)
+            : variantTypes
+          : [],
+        variants: variants
+          ? typeof variants === "string"
+            ? JSON.parse(variants)
+            : variants
+          : [],
       });
 
       return sendSuccess(res, {

@@ -1,18 +1,17 @@
+import { Types } from "mongoose";
 import VariantOption from "../models/variantOption.model.js";
 import VariantType from "../models/variantType.model.js";
 import { paginateAggregate } from "./pagination.service.js";
 
 export const VariantOptionService = {
   createVariantOptionService: async (data) => {
-    const { variant_type_id, value, label } = data;
+    const { variant_type_id, value, label, meta } = data;
 
-    // check variant type exists
     const variantType = await VariantType.findById(variant_type_id);
     if (!variantType) {
       throw { code: 404, message: "Variant type not found" };
     }
 
-    // check duplicate value under same variant type
     const existing = await VariantOption.findOne({
       variant_type_id,
       value: { $regex: new RegExp(`^${value}$`, "i") },
@@ -25,26 +24,31 @@ export const VariantOptionService = {
       };
     }
 
-    // auto calculate display_order
-    // find last document under this variant type and increment by 1
     const lastOption = await VariantOption.findOne({ variant_type_id })
       .sort({ display_order: -1 })
       .select("display_order");
 
     const display_order = lastOption ? lastOption.display_order + 1 : 1;
 
+    const metaMap =
+      meta && typeof meta === "object"
+        ? new Map(Object.entries(meta))
+        : new Map();
+
     const variantOption = await VariantOption.create({
       variant_type_id,
       value,
-      label: label || value, // fallback to value if label not provided
-      display_order, // auto assigned
-      // meta     → not required for now
-      // status   → schema default "active" handles it
+      label: label || value,
+      display_order,
+      meta: metaMap,
     });
 
     await variantOption.populate("variant_type_id", "name slug");
 
-    return variantOption;
+    const result = variantOption.toObject();
+    result.meta = Object.fromEntries(variantOption.meta || new Map());
+
+    return result;
   },
 
   getAllVariantOptionsService: async (query) => {
@@ -57,14 +61,14 @@ export const VariantOptionService = {
     }
 
     if (variant_type_id) {
-      filter.variant_type_id = variant_type_id;
+      filter.variant_type_id = new Types.ObjectId(variant_type_id);
     }
 
     if (search) {
-      filter.value = {
-        $regex: search,
-        $options: "i",
-      };
+      filter.$or = [
+        { value: { $regex: search, $options: "i" } },
+        { label: { $regex: search, $options: "i" } },
+      ];
     }
 
     const pageNumber = Number(page);
@@ -91,9 +95,11 @@ export const VariantOptionService = {
       {
         $project: {
           value: 1,
+          label: 1,
           slug: 1,
           display_order: 1,
           status: 1,
+          meta: 1,
           variant_type_id: {
             _id: "$variant_type_id._id",
             name: "$variant_type_id.name",
@@ -105,15 +111,27 @@ export const VariantOptionService = {
       },
       {
         $sort: {
-          display_order: 1,
+          createdAt: -1,
         },
       },
     ];
 
-    return await paginateAggregate(VariantOption, pipeline, {
+    const result = await paginateAggregate(VariantOption, pipeline, {
       page: pageNumber,
       limit: limitNumber,
     });
+
+    result.data = result.data.map((item) => ({
+      ...item,
+      meta:
+        item.meta instanceof Map
+          ? Object.fromEntries(item.meta)
+          : item.meta && typeof item.meta === "object"
+            ? item.meta
+            : {},
+    }));
+
+    return result;
   },
 
   getVariantOptionByIdService: async (id) => {
@@ -151,14 +169,13 @@ export const VariantOptionService = {
   },
 
   updateVariantOptionService: async (id, data) => {
-    const { value, label, display_order } = data;
+    const { value, label, display_order, meta } = data;
 
     const existing = await VariantOption.findById(id);
     if (!existing) {
       throw { code: 404, message: "Variant option not found" };
     }
 
-    // check duplicate value under same variant type (exclude current doc)
     if (value) {
       const duplicate = await VariantOption.findOne({
         _id: { $ne: id },
@@ -180,36 +197,34 @@ export const VariantOptionService = {
     if (label) updateFields.label = label;
     if (display_order) updateFields.display_order = display_order;
 
+    if (meta && typeof meta === "object") {
+      updateFields.meta = new Map(Object.entries(meta));
+    }
+
     const updated = await VariantOption.findByIdAndUpdate(
       id,
       { $set: updateFields },
       { new: true, runValidators: true },
     ).populate("variant_type_id", "name slug");
 
-    return updated;
+    const result = updated.toObject();
+    result.meta = Object.fromEntries(updated.meta || new Map());
+
+    return result;
   },
 
-  updateVariantOptionStatusService: async (id, status) => {
+  updateVariantOptionStatusService: async (id) => {
     const existing = await VariantOption.findById(id);
 
     if (!existing) {
       throw { code: 404, message: "Variant option not found" };
     }
 
-    if (!["active", "inactive"].includes(status)) {
-      throw {
-        code: 400,
-        message: "Invalid status. Must be active or inactive",
-      };
-    }
-
-    if (existing.status === status) {
-      throw { code: 400, message: `Variant option is already ${status}` };
-    }
+    const newStatus = existing.status === "active" ? "inactive" : "active";
 
     const updated = await VariantOption.findByIdAndUpdate(
       id,
-      { $set: { status } },
+      { $set: { status: newStatus } },
       { new: true },
     ).populate("variant_type_id", "name slug");
 

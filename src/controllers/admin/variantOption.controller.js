@@ -23,12 +23,12 @@ export const VariantOptionController = {
 
   getAllVariantOptions: async (req, res) => {
     try {
-      const { variantOptions, pagination } =
+      const { data, pagination } =
         await VariantOptionService.getAllVariantOptionsService(req.query);
 
       return sendSuccess(res, {
         message: "Variant options fetched successfully",
-        data: variantOptions,
+        data,
         pagination,
       });
     } catch (err) {
@@ -104,16 +104,13 @@ export const VariantOptionController = {
 
   updateVariantOptionStatus: async (req, res) => {
     try {
-      const { status } = req.body;
-
       const updated =
         await VariantOptionService.updateVariantOptionStatusService(
           req.params.id,
-          status,
         );
 
       return sendSuccess(res, {
-        message: `Variant option status updated to ${status} successfully`,
+        message: `Variant option status updated to ${updated.status} successfully`,
         data: updated,
       });
     } catch (err) {
