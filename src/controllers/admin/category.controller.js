@@ -51,7 +51,8 @@ export const CategoryController = {
 
   getLeafCategories: async (req, res, next) => {
     try {
-      const categories = await CategoryService.getLeafCategories();
+      const { search } = req.query;
+      const categories = await CategoryService.getLeafCategories({ search });
       return sendSuccess(res, {
         message: "Leaf categories fetched successfully",
         data: categories,

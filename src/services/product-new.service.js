@@ -219,8 +219,8 @@ export const ProductService = {
 
     if (product.hasVariants) {
       const variants = await ProductVariant.find({ product_id: id })
-        .populate("combination.variant_type_id", "name")
-        .populate("combination.variant_option_id", "value level meta")
+        .populate("combination.variant_type_id", "name _id")
+        .populate("combination.variant_option_id", "value level meta _id")
         .lean();
 
       product.variants = variants;

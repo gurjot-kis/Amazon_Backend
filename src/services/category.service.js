@@ -315,9 +315,21 @@ export const CategoryService = {
     return { data: tree, pagination };
   },
 
-  getLeafCategories: async () => {
-    const allCategories = await Category.find({ status: "active" })
+  getLeafCategories: async ({ search = "" } = {}) => {
+    const filter = {
+      status: "active",
+    };
+
+    if (search?.trim()) {
+      filter.name = {
+        $regex: search.trim(),
+        $options: "i",
+      };
+    }
+
+    const allCategories = await Category.find(filter)
       .select("_id name parent_id")
+      .sort({ name: 1 })
       .lean();
 
     const parentIds = new Set(
@@ -328,6 +340,12 @@ export const CategoryService = {
 
     const leafCategories = allCategories.filter(
       (c) => !parentIds.has(c._id.toString()),
+    );
+
+    leafCategories.sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, {
+        sensitivity: "base",
+      }),
     );
 
     return leafCategories;

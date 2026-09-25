@@ -46,10 +46,11 @@ export const uploadProductImages = multer({
   storage: createStorage("products"),
   fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB per file
-}).fields([
-  { name: "mainImage", maxCount: 1 },
-  { name: "featuredImages", maxCount: 10 },
-]);
+}).any()
+// .fields([
+//   { name: "mainImage", maxCount: 1 },
+//   { name: "featuredImages", maxCount: 10 },
+// ]);
 
 export const uploadCategoryImage = multer({
   storage: createStorage("categories"),
