@@ -452,7 +452,7 @@ export const ProductService = {
   },
 
   updateProductStatus: async (id, status) => {
-    if (!["pending", "active", "rejected"].includes(status)) {
+    if (!["pending", "active", "inactive", "rejected"].includes(status)) {
       throw new Error("Invalid status value");
     }
 
