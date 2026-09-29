@@ -211,7 +211,7 @@ export const ProductService = {
 
   getProductById: async (id) => {
     const product = await Product.findById(id)
-      .populate("category_id", "name _id")
+      .populate("category_id", "name _id category_image")
       .populate("variantTypes", "name")
       .lean();
 
