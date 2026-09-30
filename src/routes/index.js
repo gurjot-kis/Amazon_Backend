@@ -1,7 +1,6 @@
 import express from 'express';
 import authRoutes from './auth.routes.js';
 import subCategoryRoutes from './sub-category.routes.js';
-import productRoutes from './product.routes.js';
 import userRoutes from './user.routes.js';
 import dashboardRoutes from './dashboard.routes.js';
 import adminRoutes from './admin.routes.js';
@@ -24,7 +23,6 @@ router.get('/', (req, res) => {
 // POST /api/login
 router.use(authRoutes);
 router.use(subCategoryRoutes);
-router.use(productRoutes);
 router.use(userRoutes);
 router.use(dashboardRoutes);
 router.use(adminRoutes);

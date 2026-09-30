@@ -24,6 +24,7 @@ const ProductVariantSchema = new mongoose.Schema(
     sku: {
       type: String,
       trim: true,
+      uppercase: true,
       default: "",
     },
     costPrice: {
@@ -66,7 +67,10 @@ const ProductVariantSchema = new mongoose.Schema(
 
 ProductVariantSchema.index({ product_id: 1 });
 ProductVariantSchema.index({ product_id: 1, status: 1 });
-ProductVariantSchema.index({ sku: 1 });
+ProductVariantSchema.index(
+  { sku: 1 },
+  { unique: true, partialFilterExpression: { sku: { $gt: "" } } },
+);
 ProductVariantSchema.index({ stockStatus: 1, status: 1 });
 ProductVariantSchema.index({
   product_id: 1,

@@ -4,7 +4,7 @@ import {
 } from "../../helpers/product-upload.helper.js";
 import { sendSuccess } from "../../helpers/response.helper.js";
 import Product from "../../models/product.model.js";
-import ProductService from "../../services/product-new.service.js";
+import ProductService from "../../services/product.service.js";
 
 export const ProductController = {
   createProduct: async (req, res, next) => {

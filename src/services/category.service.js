@@ -1,10 +1,17 @@
+import mongoose from "mongoose";
 import Category from "../models/category.model.js";
 import { paginateAggregate } from "./pagination.service.js";
 
 const normalizeName = (value) => String(value).trim();
 
 export const CategoryService = {
-  createCategory: async ({ name, description, category_image, parent_id }) => {
+  createCategory: async ({
+    name,
+    category_type = "standard_commerce",
+    description,
+    category_image,
+    parent_id,
+  }) => {
     if (!name) {
       throw new Error("Category name is required");
     }
@@ -12,12 +19,15 @@ export const CategoryService = {
     const normalizedName = normalizeName(name);
 
     let level = 1;
+    let resolvedType = category_type;
+
     if (parent_id) {
       const parent = await Category.findById(parent_id);
       if (!parent) {
         throw new Error("Parent category not found");
       }
       level = parent.level + 1;
+      resolvedType = category_type || parent.category_type;
     }
 
     const lastCategory = await Category.findOne({
@@ -40,6 +50,7 @@ export const CategoryService = {
 
     const category = await Category.create({
       name: normalizedName,
+      category_type: resolvedType,
       description: description ? String(description).trim() : "",
       category_image: category_image || "",
       parent_id: parent_id || null,
@@ -55,10 +66,12 @@ export const CategoryService = {
     search = "",
     filter_status = "",
     filter_level = "",
+    filter_type = "",
   } = {}) => {
     const baseMatch = {};
     if (search) baseMatch.name = { $regex: search, $options: "i" };
     if (filter_status) baseMatch.status = filter_status;
+    if (filter_type) baseMatch.category_type = filter_type;
     if (filter_level !== "") baseMatch.level = Number(filter_level);
 
     const maxLevelDoc = await Category.findOne()
@@ -67,8 +80,8 @@ export const CategoryService = {
       .lean();
     const maxLevel = maxLevelDoc?.level ?? 1;
 
-    // ─── FLAT MODE (search or level filter active) ───────────────────
-    if (search || filter_level) {
+    // ─── FLAT MODE: Activate when search, level filter, OR type filter is set ───
+    if (search || filter_level || filter_type) {
       const { data, pagination } = await paginateAggregate(
         Category,
         [
@@ -78,6 +91,7 @@ export const CategoryService = {
             $project: {
               _id: 1,
               name: 1,
+              category_type: 1,
               parent_id: 1,
               category_image: 1,
               description: 1,
@@ -92,7 +106,7 @@ export const CategoryService = {
       return { data, pagination, maxLevel };
     }
 
-    // ─── TREE MODE (normal browse, filter_status only or nothing) ────
+    // ─── TREE MODE (normal browse without filters) ───────────────────
     const rootMatch = { parent_id: null };
     if (filter_status) rootMatch.status = filter_status;
 
@@ -105,6 +119,7 @@ export const CategoryService = {
           $project: {
             _id: 1,
             name: 1,
+            category_type: 1,
             parent_id: 1,
             category_image: 1,
             description: 1,
@@ -124,7 +139,7 @@ export const CategoryService = {
       filter_status ? { status: filter_status } : {},
     )
       .select(
-        "_id name parent_id category_image description level status display_order",
+        "_id name category_type parent_id category_image description level status display_order",
       )
       .sort({ display_order: 1 })
       .lean();
@@ -139,6 +154,7 @@ export const CategoryService = {
         .map((c) => ({
           _id: c._id,
           name: c.name,
+          category_type: c.category_type,
           parent_id: c.parent_id,
           category_image: c.category_image,
           description: c.description,
@@ -151,6 +167,7 @@ export const CategoryService = {
     const tree = roots.map((c) => ({
       _id: c._id,
       name: c.name,
+      category_type: c.category_type,
       parent_id: c.parent_id,
       category_image: c.category_image,
       description: c.description,
@@ -164,7 +181,9 @@ export const CategoryService = {
 
   getCategoryById: async (id) => {
     const category = await Category.findById(id)
-      .select("_id name parent_id category_image description level")
+      .select(
+        "_id name category_type parent_id category_image description level",
+      )
       .lean();
 
     if (!category) {
@@ -176,58 +195,122 @@ export const CategoryService = {
 
   updateCategory: async (
     id,
-    { name, description, category_image, parent_id, is_featured, metadata },
+    {
+      name,
+      category_type,
+      description,
+      category_image,
+      parent_id,
+      is_featured,
+      metadata,
+    },
   ) => {
     const category = await Category.findById(id).lean();
+
     if (!category) {
       throw new Error("Category not found");
     }
 
     const updateFields = {};
 
-    if (name) {
+    if (category_type !== undefined) {
+      updateFields.category_type = category_type;
+    }
+
+    const newParentId =
+      parent_id !== undefined
+        ? parent_id === ""
+          ? null
+          : parent_id
+        : category.parent_id;
+
+    if (
+      newParentId !== null &&
+      newParentId !== undefined &&
+      !mongoose.Types.ObjectId.isValid(newParentId)
+    ) {
+      throw new Error("Invalid parent category ID");
+    }
+
+    // Name
+    if (name !== undefined) {
       const normalizedName = normalizeName(name);
+
       const existing = await Category.findOne({
         _id: { $ne: id },
-        parent_id: parent_id !== undefined ? parent_id : category.parent_id,
+        parent_id: newParentId || null,
         name: normalizedName,
       }).lean();
+
       if (existing) {
         throw new Error(
           "Category with this name already exists under the same parent",
         );
       }
+
       updateFields.name = normalizedName;
     }
 
-    if (description !== undefined)
+    // Description
+    if (description !== undefined) {
       updateFields.description = String(description).trim();
-    if (category_image) updateFields.category_image = category_image;
-    if (is_featured !== undefined)
-      updateFields.is_featured = is_featured === "true" || is_featured === true;
-    if (metadata) updateFields.metadata = new Map(Object.entries(metadata));
+    }
 
-    if (
-      parent_id !== undefined &&
-      parent_id !== category.parent_id?.toString()
-    ) {
-      if (parent_id === null || parent_id === "") {
-        updateFields.parent_id = null;
-        updateFields.level = 1;
-      } else {
-        const newParent = await Category.findById(parent_id)
-          .select("level")
-          .lean();
-        if (!newParent) throw new Error("Parent category not found");
-        updateFields.parent_id = parent_id;
-        updateFields.level = newParent.level + 1;
+    // Image
+    if (category_image) {
+      updateFields.category_image = category_image;
+    }
+
+    // Featured
+    if (is_featured !== undefined) {
+      updateFields.is_featured = is_featured === "true" || is_featured === true;
+    }
+
+    // Metadata
+    if (metadata) {
+      updateFields.metadata = new Map(Object.entries(metadata));
+    }
+
+    // Parent category change
+    if (parent_id !== undefined) {
+      const currentParentId = category.parent_id
+        ? category.parent_id.toString()
+        : null;
+
+      const normalizedNewParentId = newParentId ? newParentId.toString() : null;
+
+      if (normalizedNewParentId !== currentParentId) {
+        // Move to top-level
+        if (!normalizedNewParentId) {
+          updateFields.parent_id = null;
+          updateFields.level = 1;
+        } else {
+          // Prevent self-parent
+          if (normalizedNewParentId === id.toString()) {
+            throw new Error("A category cannot be its own parent");
+          }
+
+          const newParent = await Category.findById(normalizedNewParentId)
+            .select("_id level")
+            .lean();
+
+          if (!newParent) {
+            throw new Error("Parent category not found");
+          }
+
+          updateFields.parent_id = newParent._id;
+          updateFields.level = newParent.level + 1;
+        }
       }
     }
 
     const updated = await Category.findByIdAndUpdate(
       id,
       { $set: updateFields },
-      { new: true, runValidators: true },
+      {
+        new: true,
+        runValidators: true,
+      },
     ).lean();
 
     return updated;
@@ -353,7 +436,7 @@ export const CategoryService = {
 
   getAllCategoriesSelectList: async () => {
     const allCategories = await Category.find({ status: "active" })
-      .select("_id name parent_id level") // add parent_id
+      .select("_id name parent_id level category_type")
       .lean();
 
     const flatten = (parentId = null, depth = 0) => {
@@ -369,6 +452,7 @@ export const CategoryService = {
             name: c.name,
             level: c.level,
             depth,
+            category_type: c.category_type,
             parent_id: c.parent_id,
           },
           ...flatten(c._id, depth + 1),
@@ -376,6 +460,44 @@ export const CategoryService = {
     };
 
     return flatten();
+  },
+
+  getActiveQuickCommerceCategories: async () => {
+    const categories = await Category.find({
+      category_type: "quick_commerce",
+      status: "active",
+    })
+      .select(
+        "_id name category_type parent_id category_image description level display_order",
+      )
+      .sort({ display_order: 1 })
+      .lean();
+
+    // Nested tree builder (Top-level roots with subcategories attached)
+    const buildTree = (parentId = null) => {
+      return categories
+        .filter((c) =>
+          parentId === null
+            ? c.parent_id === null
+            : c.parent_id?.toString() === parentId.toString(),
+        )
+        .map((c) => ({
+          _id: c._id,
+          name: c.name,
+          category_type: c.category_type,
+          parent_id: c.parent_id,
+          category_image: c.category_image,
+          description: c.description,
+          level: c.level,
+          display_order: c.display_order,
+          children: buildTree(c._id),
+        }));
+    };
+
+    return {
+      tree: buildTree(null),
+      flat: categories, // returned so consumers can pick either flat or tree structure
+    };
   },
 };
 

@@ -122,13 +122,17 @@ export const applyProductUploadsForUpdate = (body, files, existingProduct) => {
   const uploadedFeatured = featuredImageFiles.map(
     (f) => `/uploads/products/${f.filename}`,
   );
-  const existingKept = normalizeFeaturedImagesInput(next.featuredImages) || [];
+  const currentImages = existingProduct.featuredImages || [];
+  const keptInput = normalizeFeaturedImagesInput(next.existingFeaturedImages);
 
-  if (uploadedFeatured.length > 0 || next.featuredImages !== undefined) {
-    next.featuredImages = [...new Set([...existingKept, ...uploadedFeatured])];
-  } else {
-    next.featuredImages = existingProduct.featuredImages;
-  }
+  // only allow paths that already belong to this product
+  const kept =
+    keptInput === undefined
+      ? currentImages
+      : keptInput.filter((p) => currentImages.includes(p));
+
+  next.featuredImages = [...new Set([...kept, ...uploadedFeatured])].slice(0, 6);
+  delete next.existingFeaturedImages;
 
   // Handle variants in update
   const rawVariants = parseVariants(next.variants);

@@ -21,6 +21,19 @@ export const CategoryController = {
       next(error);
     }
   },
+
+  getActiveQuickCommerceCategories: async (req, res, next) => {
+    try {
+      const data = await CategoryService.getActiveQuickCommerceCategories();
+
+      return sendSuccess(res, {
+        message: "Active quick commerce categories fetched successfully",
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
 };
 
 export default CategoryController;
