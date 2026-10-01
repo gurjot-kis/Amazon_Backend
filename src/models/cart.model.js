@@ -1,31 +1,44 @@
 import mongoose from "mongoose";
 
-const CartSchema = new mongoose.Schema(
+const CartItemSchema = new mongoose.Schema(
   {
-    user_id: {
-      type: String,
-      required: true,
-      index: true,
-      trim: true,
-    },
     product_id: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
       required: true,
-      index: true,
-      trim: true,
+    },
+    // null for products without variants
+    variant_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ProductVariant",
+      default: null,
     },
     quantity: {
       type: Number,
       required: true,
       min: 1,
       default: 1,
+      validate: {
+        validator: Number.isInteger,
+        message: "Quantity must be an integer",
+      },
     },
   },
-  { timestamps: true }
+  { _id: false },
 );
 
-CartSchema.index({ user_id: 1, product_id: 1 }, { unique: true });
+const CartSchema = new mongoose.Schema(
+  {
+    user_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      unique: true,
+    },
+    items: { type: [CartItemSchema], default: [] },
+  },
+  { timestamps: true, versionKey: false },
+);
 
 const Cart = mongoose.model("Cart", CartSchema);
-
 export default Cart;

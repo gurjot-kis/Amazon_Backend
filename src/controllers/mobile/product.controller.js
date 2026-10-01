@@ -41,3 +41,5 @@ export const ProductController = {
     }
   },
 };
+
+export default ProductController;

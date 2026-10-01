@@ -1,125 +1,42 @@
-import { CartService } from "../services/cart.service.js";
+import * as cartService from "../services/cart.service.js";
+import { asyncHandler } from "../utils/AppError.js";
 
-const sendError = (res, code, message) => {
-  return res.status(code).json({
-    success: false,
-    code,
-    message,
-    data: null,
+export const getCart = asyncHandler(async (req, res) => {
+  const cart = await cartService.getCart(req.user._id);
+  res.status(200).json({ success: true, data: cart });
+});
+
+export const addToCart = asyncHandler(async (req, res) => {
+  const { productId, variantId = null, quantity = 1 } = req.body;
+
+  await cartService.addToCart({
+    userId: req.user._id,
+    productId,
+    variantId,
+    quantity,
   });
-};
 
-export const CartController = {
-  addToCart: async (req, res) => {
-    try {
-      const user_id = req.user?.user_id;
-      const { product_id, quantity } = req.body || {};
+  const cart = await cartService.getCart(req.user._id);
+  res
+    .status(200)
+    .json({ success: true, message: "Item added to cart", data: cart });
+});
 
-      const data = await CartService.addToCart({ user_id, product_id, quantity });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Product added to cart successfully",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to add product to cart";
+export const decrementCartItem = asyncHandler(async (req, res) => {
+  const { productId, variantId = null, quantity = 1 } = req.body;
 
-      if (message === "Product not found") {
-        return sendError(res, 404, message);
-      }
+  await cartService.decrementCartItem({
+    userId: req.user._id,
+    productId,
+    variantId,
+    quantity,
+  });
 
-      if (err?.name === "InsufficientStockError") {
-        return res.status(400).json({
-          success: false,
-          code: 400,
-          message: err.message,
-          data: {
-            available_quantity: err.availableQuantity,
-            requested_quantity: err.requestedQuantity,
-          },
-        });
-      }
+  const cart = await cartService.getCart(req.user._id);
+  res.status(200).json({ success: true, message: "Cart updated", data: cart });
+});
 
-      return sendError(res, 400, message);
-    }
-  },
-
-  updateQuantity: async (req, res) => {
-    try {
-      const user_id = req.user?.user_id;
-      const { product_id } = req.params || {};
-      const { quantity } = req.body || {};
-
-      const data = await CartService.updateQuantity({ user_id, product_id, quantity });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Cart quantity updated successfully",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to update cart quantity";
-
-      if (message === "Product not found" || message === "Cart item not found") {
-        return sendError(res, 404, message);
-      }
-
-      if (err?.name === "InsufficientStockError") {
-        return res.status(400).json({
-          success: false,
-          code: 400,
-          message: err.message,
-          data: {
-            available_quantity: err.availableQuantity,
-            requested_quantity: err.requestedQuantity,
-          },
-        });
-      }
-
-      return sendError(res, 400, message);
-    }
-  },
-
-  deleteCartItem: async (req, res) => {
-    try {
-      const user_id = req.user?.user_id;
-      const { product_id } = req.params || {};
-
-      const data = await CartService.deleteCartItem({ user_id, product_id });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Cart item deleted successfully",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to delete cart item";
-
-      if (message === "Cart item not found") {
-        return sendError(res, 404, message);
-      }
-
-      return sendError(res, 400, message);
-    }
-  },
-
-  listCartItems: async (req, res) => {
-    try {
-      const user_id = req.user?.user_id;
-      const data = await CartService.listCartItems({ user_id });
-
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Cart list fetched successfully",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to fetch cart list";
-      return sendError(res, 400, message);
-    }
-  },
-};
-
-export default CartController;
+export const clearCart = asyncHandler(async (req, res) => {
+  await cartService.clearCart(req.user._id);
+  res.status(200).json({ success: true, message: "Cart cleared" });
+});
