@@ -9,7 +9,7 @@ router.use(authMiddleware, authorizeRoles(ROLES.USER));
 router.get("/", CartController.getCart);
 router.post("/items", CartController.addToCart);
 router.patch("/items/decrement", CartController.decrementCartItem);
-router.delete("/", CartController.clearCart);
 router.delete("/items", CartController.removeCartItem);
+router.delete("/", CartController.clearCart);
 
 export default router;

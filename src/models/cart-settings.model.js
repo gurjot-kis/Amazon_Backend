@@ -51,8 +51,12 @@ const CartSettingsSchema = new mongoose.Schema(
       default: "",
       index: true,
     },
+    type: {
+      type: String,
+      default: undefined,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const CartSettings = mongoose.model("CartSettings", CartSettingsSchema);

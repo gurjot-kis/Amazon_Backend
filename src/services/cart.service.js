@@ -5,9 +5,19 @@ import ProductVariant from "../models/productVariant.model.js";
 import { AppError } from "../utils/AppError.js";
 
 const MAX_QTY_PER_ITEM = 10;
-const FREE_DELIVERY_THRESHOLD = 150;
-const DELIVERY_FEE = 30;
-const HANDLING_FEE = 10;
+
+const DEFAULT_CART_SETTINGS = {
+  handling_charge: 10,
+  delivery_charge: 30,
+  free_delivery_min_amount: 150,
+  small_cart_charge: 0,
+  small_cart_max_amount: 0,
+};
+
+const getCartSettings = async (type = "Product") => {
+  const settings = await CartSettings.findOne({ type }).lean();
+  return { ...DEFAULT_CART_SETTINGS, ...(settings || {}) };
+};
 
 const getMaxAllowedQty = async (productId, variantId) => {
   const product = await Product.findById(productId)
@@ -77,20 +87,24 @@ export const CartService = {
       subtotal: 0,
       deliveryFee: 0,
       handlingFee: 0,
+      smallCartFee: 0,
       grandTotal: 0,
     };
 
-    const cart = await Cart.findOne({ user_id: userId })
-      .populate("items.product_id", "name slug mainImage price currency")
-      .populate({
-        path: "items.variant_id",
-        select: "sku price images combination",
-        populate: [
-          { path: "combination.variant_type_id", select: "name" },
-          { path: "combination.variant_option_id", select: "value label" },
-        ],
-      })
-      .lean();
+    const [cart, settings] = await Promise.all([
+      Cart.findOne({ user_id: userId })
+        .populate("items.product_id", "name slug mainImage price currency")
+        .populate({
+          path: "items.variant_id",
+          select: "sku price images combination",
+          populate: [
+            { path: "combination.variant_type_id", select: "name" },
+            { path: "combination.variant_option_id", select: "value label" },
+          ],
+        })
+        .lean(),
+      getCartSettings("Product"),
+    ]);
 
     if (!cart) return emptyCart;
 
@@ -132,10 +146,22 @@ export const CartService = {
 
     const subtotal = items.reduce((s, i) => s + i.lineTotal, 0);
 
-    // Free delivery when subtotal is above 150, otherwise 30
-    const deliveryFee = subtotal > FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE;
-    const handlingFee = HANDLING_FEE;
-    const grandTotal = subtotal + deliveryFee + handlingFee;
+    // Free delivery once subtotal reaches the configured minimum
+    const deliveryFee =
+      subtotal >= settings.free_delivery_min_amount
+        ? 0
+        : settings.delivery_charge;
+
+    const handlingFee = settings.handling_charge;
+
+    // Small cart surcharge when subtotal is below the configured max
+    const smallCartFee =
+      settings.small_cart_charge > 0 &&
+      subtotal < settings.small_cart_max_amount
+        ? settings.small_cart_charge
+        : 0;
+
+    const grandTotal = subtotal + deliveryFee + handlingFee + smallCartFee;
 
     return {
       items,
@@ -143,6 +169,7 @@ export const CartService = {
       subtotal,
       deliveryFee,
       handlingFee,
+      smallCartFee,
       grandTotal,
     };
   },
