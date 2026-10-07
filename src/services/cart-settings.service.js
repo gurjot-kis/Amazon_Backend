@@ -1,25 +1,39 @@
 import CartSettings from "../models/cart-settings.model.js";
 
-const normalizeId = (value) => String(value || "").trim().replace(/^:/, "");
+const createError = (message, statusCode = 400) =>
+  Object.assign(new Error(message), { statusCode });
 
-const parseNonNegativeNumber = (value, fieldName, { required = false } = {}) => {
+const normalizeId = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^:/, "");
+
+const parseNonNegativeNumber = (
+  value,
+  fieldName,
+  { required = false } = {},
+) => {
   if (value === undefined || value === null || value === "") {
     if (required) {
-      throw new Error(`${fieldName} is required`);
+      throw createError(`${fieldName} is required`, 400);
     }
     return undefined;
   }
   const n = Number(value);
   if (!Number.isFinite(n) || n < 0) {
-    throw new Error(`${fieldName} must be a number greater than or equal to 0`);
+    throw createError(
+      `${fieldName} must be a number greater than or equal to 0`,
+      400,
+    );
   }
   return n;
 };
 
 const selectPublicFields =
-  "cart_settings_id handling_charge delivery_charge free_delivery_min_amount small_cart_charge small_cart_max_amount user_id role -_id";
+  "cart_settings_id handling_charge delivery_charge free_delivery_min_amount small_cart_charge small_cart_max_amount user_id role _id";
 
 const mapCartSettings = (doc) => ({
+  _id: doc._id,
   cart_settings_id: doc.cart_settings_id,
   handling_charge: Number(doc.handling_charge || 0),
   delivery_charge: Number(doc.delivery_charge || 0),
@@ -32,7 +46,18 @@ const mapCartSettings = (doc) => ({
   updatedAt: doc.updatedAt,
 });
 
-/** Latest settings row used for cart pricing (most recently updated). */
+const buildScopedFilter = ({ cart_settings_id, user_id, role }) => {
+  // const id = normalizeId(cart_settings_id);
+  const id = cart_settings_id;
+  if (!id) {
+    throw createError("cart_settings_id is required", 400);
+  }
+  const filter = { cart_settings_id: id };
+  if (String(user_id || "").trim()) filter.user_id = String(user_id).trim();
+  if (String(role || "").trim()) filter.role = String(role).trim();
+  return { id, filter };
+};
+
 export const getActiveCartSettings = async () => {
   const doc = await CartSettings.findOne({})
     .sort({ updatedAt: -1 })
@@ -54,7 +79,10 @@ export const getActiveCartSettings = async () => {
 };
 
 export const computeCartSummary = (items, settings) => {
-  const items_total = items.reduce((acc, item) => acc + Number(item.itemTotal || 0), 0);
+  const items_total = items.reduce(
+    (acc, item) => acc + Number(item.itemTotal || 0),
+    0,
+  );
   const price_total = items.reduce((acc, item) => {
     const unitPrice = item.product?.price ?? item.price ?? 0;
     return acc + Number(unitPrice) * Number(item.quantity || 0);
@@ -121,28 +149,57 @@ export const CartSettingsService = {
     user_id,
     role,
   }) => {
+    const normalizedRole = String(role || "SuperAdmin").trim();
+
+    // Check if cart settings already exist for this role
+    const existingSettings = await CartSettings.findOne({
+      role: normalizedRole,
+    })
+      .select("_id role")
+      .lean()
+      .exec();
+
+    if (existingSettings) {
+      throw createError(
+        `Cart settings already exist for role "${normalizedRole}"`,
+        409,
+      );
+    }
+
     const doc = await CartSettings.create({
-      handling_charge: parseNonNegativeNumber(handling_charge, "handling_charge", {
-        required: true,
-      }),
-      delivery_charge: parseNonNegativeNumber(delivery_charge, "delivery_charge", {
-        required: true,
-      }),
+      handling_charge: parseNonNegativeNumber(
+        handling_charge,
+        "handling_charge",
+        {
+          required: true,
+        },
+      ),
+      delivery_charge: parseNonNegativeNumber(
+        delivery_charge,
+        "delivery_charge",
+        {
+          required: true,
+        },
+      ),
       free_delivery_min_amount: parseNonNegativeNumber(
         free_delivery_min_amount,
         "free_delivery_min_amount",
-        { required: true }
+        { required: true },
       ),
-      small_cart_charge: parseNonNegativeNumber(small_cart_charge, "small_cart_charge", {
-        required: true,
-      }),
+      small_cart_charge: parseNonNegativeNumber(
+        small_cart_charge,
+        "small_cart_charge",
+        {
+          required: true,
+        },
+      ),
       small_cart_max_amount: parseNonNegativeNumber(
         small_cart_max_amount,
         "small_cart_max_amount",
-        { required: true }
+        { required: true },
       ),
       user_id: String(user_id || "").trim(),
-      role: String(role || "").trim(),
+      role: normalizedRole,
     });
 
     return mapCartSettings(doc);
@@ -168,28 +225,37 @@ export const CartSettingsService = {
       CartSettings.countDocuments(filter),
     ]);
 
+    const totalPages = Math.ceil(total / parsedLimit);
+
     return {
       items: rows.map(mapCartSettings),
       pagination: {
         total,
         page: parsedPage,
         limit: parsedLimit,
-        totalPages: Math.ceil(total / parsedLimit),
-        hasNextPage: parsedPage < Math.ceil(total / parsedLimit),
+        totalPages,
+        hasNextPage: parsedPage < totalPages,
         hasPrevPage: parsedPage > 1,
       },
     };
   },
 
-  getCartSettingsById: async ({ cart_settings_id, user_id, role }) => {
-    const id = normalizeId(cart_settings_id);
+  getCartSettingsById: async ({ _id, user_id, role }) => {
+    const id = String(_id || "").trim();
+
     if (!id) {
-      throw new Error("cart_settings_id is required");
+      throw createError("_id is required", 400);
     }
 
-    const filter = { cart_settings_id: id };
-    if (String(user_id || "").trim()) filter.user_id = String(user_id).trim();
-    if (String(role || "").trim()) filter.role = String(role).trim();
+    const filter = { _id: id };
+
+    if (String(user_id || "").trim()) {
+      filter.user_id = String(user_id).trim();
+    }
+
+    if (String(role || "").trim()) {
+      filter.role = String(role).trim();
+    }
 
     const doc = await CartSettings.findOne(filter)
       .select(selectPublicFields)
@@ -197,14 +263,14 @@ export const CartSettingsService = {
       .exec();
 
     if (!doc) {
-      throw new Error("Cart settings not found");
+      throw createError("Cart settings not found", 404);
     }
 
     return mapCartSettings(doc);
   },
 
   updateCartSettings: async ({
-    cart_settings_id,
+    _id,
     handling_charge,
     delivery_charge,
     free_delivery_min_amount,
@@ -213,9 +279,20 @@ export const CartSettingsService = {
     user_id,
     role,
   }) => {
-    const id = normalizeId(cart_settings_id);
+    const id = String(_id || "").trim();
+
     if (!id) {
-      throw new Error("cart_settings_id is required");
+      throw createError("_id is required", 400);
+    }
+
+    const filter = { _id: id };
+
+    if (String(user_id || "").trim()) {
+      filter.user_id = String(user_id).trim();
+    }
+
+    if (String(role || "").trim()) {
+      filter.role = String(role).trim();
     }
 
     const hasAnyUpdate =
@@ -226,70 +303,99 @@ export const CartSettingsService = {
       small_cart_max_amount !== undefined;
 
     if (!hasAnyUpdate) {
-      throw new Error(
-        "At least one of handling_charge, delivery_charge, free_delivery_min_amount, small_cart_charge, or small_cart_max_amount is required"
+      throw createError(
+        "At least one of handling_charge, delivery_charge, free_delivery_min_amount, small_cart_charge, or small_cart_max_amount is required",
+        400,
       );
     }
 
-    const filter = { cart_settings_id: id };
-    if (String(user_id || "").trim()) filter.user_id = String(user_id).trim();
-    if (String(role || "").trim()) filter.role = String(role).trim();
-
     const doc = await CartSettings.findOne(filter).exec();
+
     if (!doc) {
-      throw new Error("Cart settings not found");
+      throw createError("Cart settings not found", 404);
     }
 
     if (handling_charge !== undefined) {
-      doc.handling_charge = parseNonNegativeNumber(handling_charge, "handling_charge", {
-        required: true,
-      });
+      doc.handling_charge = parseNonNegativeNumber(
+        handling_charge,
+        "handling_charge",
+        {
+          required: true,
+        },
+      );
     }
+
     if (delivery_charge !== undefined) {
-      doc.delivery_charge = parseNonNegativeNumber(delivery_charge, "delivery_charge", {
-        required: true,
-      });
+      doc.delivery_charge = parseNonNegativeNumber(
+        delivery_charge,
+        "delivery_charge",
+        {
+          required: true,
+        },
+      );
     }
+
     if (free_delivery_min_amount !== undefined) {
       doc.free_delivery_min_amount = parseNonNegativeNumber(
         free_delivery_min_amount,
         "free_delivery_min_amount",
-        { required: true }
+        {
+          required: true,
+        },
       );
     }
+
     if (small_cart_charge !== undefined) {
-      doc.small_cart_charge = parseNonNegativeNumber(small_cart_charge, "small_cart_charge", {
-        required: true,
-      });
+      doc.small_cart_charge = parseNonNegativeNumber(
+        small_cart_charge,
+        "small_cart_charge",
+        {
+          required: true,
+        },
+      );
     }
+
     if (small_cart_max_amount !== undefined) {
       doc.small_cart_max_amount = parseNonNegativeNumber(
         small_cart_max_amount,
         "small_cart_max_amount",
-        { required: true }
+        {
+          required: true,
+        },
       );
     }
 
     await doc.save();
+
     return mapCartSettings(doc);
   },
 
-  deleteCartSettings: async ({ cart_settings_id, user_id, role }) => {
-    const id = normalizeId(cart_settings_id);
+  deleteCartSettings: async ({ _id, user_id, role }) => {
+    const id = String(_id || "").trim();
+
     if (!id) {
-      throw new Error("cart_settings_id is required");
+      throw createError("_id is required", 400);
     }
 
-    const filter = { cart_settings_id: id };
-    if (String(user_id || "").trim()) filter.user_id = String(user_id).trim();
-    if (String(role || "").trim()) filter.role = String(role).trim();
+    const filter = { _id: id };
+
+    if (String(user_id || "").trim()) {
+      filter.user_id = String(user_id).trim();
+    }
+
+    if (String(role || "").trim()) {
+      filter.role = String(role).trim();
+    }
 
     const result = await CartSettings.deleteOne(filter);
+
     if (result.deletedCount === 0) {
-      throw new Error("Cart settings not found");
+      throw createError("Cart settings not found", 404);
     }
 
-    return { cart_settings_id: id };
+    return {
+      _id: id,
+    };
   },
 };
 

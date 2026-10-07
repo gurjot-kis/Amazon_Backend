@@ -48,7 +48,7 @@ const CartSettingsSchema = new mongoose.Schema(
     role: {
       type: String,
       trim: true,
-      default: "",
+      default: "SuperAdmin",
       index: true,
     },
     type: {
