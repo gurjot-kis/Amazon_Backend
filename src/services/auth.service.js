@@ -70,6 +70,89 @@ const buildAuthResponseData = (user, token) => {
   };
 };
 
+const sendLoginTwilioOtpToUser = async (user, phone) => {
+  assertUserCanLogin(user);
+
+  const otp = String(Math.floor(100000 + Math.random() * 900000));
+  const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+  user.loginTwilioOtp = otp;
+  user.loginTwilioOtpExpiry = otpExpiry;
+  await user.save();
+
+  const to = phoneToE164(phone);
+  try {
+    const result = await sendTwilioSms(
+      to,
+      `Your login OTP is ${otp}. It is valid for 10 minutes. Do not share this code.`,
+    );
+
+    if (!result.sent) {
+      user.loginTwilioOtp = null;
+      user.loginTwilioOtpExpiry = null;
+      await user.save();
+      throw new Error("SMS could not be sent. Check Twilio configuration.");
+    }
+  } catch (e) {
+    user.loginTwilioOtp = null;
+    user.loginTwilioOtpExpiry = null;
+    await user.save();
+    if (e?.message === "SMS could not be sent. Check Twilio configuration.")
+      throw e;
+    throw new Error(e?.message || "Failed to send SMS");
+  }
+
+  return { phone: to };
+};
+
+const findOrCreateUserByPhone = async (rawPhone) => {
+  let user = await findUserByPhone(rawPhone);
+  if (user) {
+    return { user, is_new_user: false };
+  }
+
+  const e164 = phoneToE164(rawPhone);
+  const digits = digitsOnly(rawPhone);
+  const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+  let email = `phone_${last10 || digits}@otp.local`;
+
+  const emailTaken = await User.findOne({ email }).exec();
+  if (emailTaken) {
+    email = `phone_${last10 || digits}_${crypto.randomBytes(4).toString("hex")}@otp.local`;
+  }
+
+  user = await User.create({
+    name: "User",
+    email,
+    phone: e164,
+    role: "User",
+    passwordHash: "",
+  });
+
+  return { user, is_new_user: true };
+};
+
+const verifyLoginTwilioOtp = async (user, otp) => {
+  if (!user.loginTwilioOtp || !user.loginTwilioOtpExpiry) {
+    throw new Error("OTP not requested or already used");
+  }
+  if (new Date() > user.loginTwilioOtpExpiry) {
+    throw new Error("OTP has expired");
+  }
+  if (user.loginTwilioOtp !== String(otp).trim()) {
+    throw new Error("Invalid OTP");
+  }
+
+  assertUserCanLogin(user);
+
+  user.loginTwilioOtp = null;
+  user.loginTwilioOtpExpiry = null;
+  await user.save();
+
+  const token = signAuthToken(user);
+  return buildAuthResponseData(user, token);
+};
+
 export const AuthService = {
   signup: async ({ email, password, fullName, phone, address }) => {
     if (!email || !password || !fullName) {
@@ -317,6 +400,33 @@ export const AuthService = {
 
     const token = signAuthToken(user);
     return buildAuthResponseData(user, token);
+  },
+
+  loginTwilioOtp: async ({ phone }) => {
+    if (!phone || !String(phone).trim()) {
+      throw new Error("phone is required");
+    }
+
+    const { user, is_new_user } = await findOrCreateUserByPhone(phone);
+    const result = await sendLoginTwilioOtpToUser(user, phone);
+
+    return {
+      ...result,
+      is_new_user,
+    };
+  },
+
+  loginTwilioOtpVerify: async ({ phone, otp }) => {
+    if (!phone || !otp) {
+      throw new Error("phone and otp are required");
+    }
+
+    const user = await findUserByPhone(phone);
+    if (!user) {
+      throw new Error("Invalid credentials");
+    }
+
+    return verifyLoginTwilioOtp(user, otp);
   },
 };
 
