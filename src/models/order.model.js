@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
-import crypto from "crypto";
+const { Schema } = mongoose;
 
 const OrderItemSchema = new mongoose.Schema(
   {
-    product_id: { type: String, required: true, trim: true },
+    product_id: { type: Schema.Types.ObjectId, ref: "Product", required: true },
     name: { type: String, required: true, trim: true },
     slug: { type: String, default: "", trim: true },
     mainImage: { type: String, default: "", trim: true },
@@ -13,12 +13,16 @@ const OrderItemSchema = new mongoose.Schema(
     quantity: { type: Number, required: true, min: 1 },
     itemTotal: { type: Number, required: true, min: 0 },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const ShippingAddressSchema = new mongoose.Schema(
   {
-    address_id: { type: String, required: true, trim: true },
+    address_id: {
+      type: Schema.Types.ObjectId,
+      ref: "Address",
+      required: true,
+    },
     fullName: { type: String, required: true, trim: true },
     phone: { type: String, required: true, trim: true },
     addressLine1: { type: String, required: true, trim: true },
@@ -31,23 +35,16 @@ const ShippingAddressSchema = new mongoose.Schema(
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const OrderSchema = new mongoose.Schema(
   {
-    order_id: {
-      type: String,
-      required: true,
-      unique: true,
-      default: () => crypto.randomUUID(),
-      index: true,
-    },
     user_id: {
-      type: String,
+      type: Schema.Types.ObjectId,
+      ref: "User",
       required: true,
       index: true,
-      trim: true,
     },
     items: {
       type: [OrderItemSchema],
@@ -120,7 +117,7 @@ const OrderSchema = new mongoose.Schema(
       index: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const Order = mongoose.model("Order", OrderSchema);
