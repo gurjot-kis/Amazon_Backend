@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Cart from "../models/cart.model.js";
 import Product from "../models/product.model.js";
+import CartSettings from "../models/cart-settings.model.js";
 import ProductVariant from "../models/productVariant.model.js";
 import { AppError } from "../utils/AppError.js";
 
@@ -109,7 +110,7 @@ export const CartService = {
     if (!cart) return emptyCart;
 
     const items = cart.items
-      .filter((i) => i.product_id) // skip deleted products
+      .filter((i) => i.product_id) 
       .map((i) => {
         const product = i.product_id;
         const variant = i.variant_id || null;

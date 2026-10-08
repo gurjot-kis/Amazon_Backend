@@ -2,7 +2,6 @@ import Banner from "../models/banner.model.js";
 
 const normalizeString = (value) => (value === undefined || value === null ? "" : String(value).trim());
 
-/** Route docs use `:banner_id`; clients sometimes paste `:uuid` into the path. */
 const normalizeBannerId = (value) => {
   const s = normalizeString(value);
   return s.startsWith(":") ? s.slice(1) : s;
@@ -10,7 +9,6 @@ const normalizeBannerId = (value) => {
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** 0 = inactive, 1 = active */
 const parseStatus = (value, { required = false, defaultValue = 1 } = {}) => {
   if (value === undefined || value === null || value === "") {
     if (required) {
@@ -144,7 +142,6 @@ export const BannerService = {
     };
   },
 
-  /** Active banners only (status = 1). Public storefront use. */
   listBannerImg: async ({ page = 1, limit = 10, search = "", upload_area: uploadAreaFilter } = {}) => {
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));

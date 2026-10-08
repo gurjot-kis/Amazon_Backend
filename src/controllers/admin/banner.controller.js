@@ -1,4 +1,4 @@
-import { BannerService } from "../services/banner.service.js";
+import { BannerService } from "../../services/banner.service.js";
 
 const sendError = (res, code, message) => {
   return res.status(code).json({
@@ -88,32 +88,6 @@ export const BannerController = {
         message === "upload_area must be website or app" ||
         message === "upload_area is required"
       ) {
-        return sendError(res, 400, message);
-      }
-      return sendError(res, 500, "Unable to fetch banners");
-    }
-  },
-
-  /** Public: banners with status = 1 only */
-  getBannerImg: async (req, res) => {
-    try {
-      const { page, limit, search, upload_area } = req.query || {};
-      const { items, pagination } = await BannerService.listBannerImg({
-        page,
-        limit,
-        search,
-        upload_area,
-      });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Active banners fetched successfully",
-        data: items,
-        pagination,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to fetch banners";
-      if (message === "upload_area must be website or app") {
         return sendError(res, 400, message);
       }
       return sendError(res, 500, "Unable to fetch banners");
