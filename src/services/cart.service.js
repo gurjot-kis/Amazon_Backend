@@ -15,9 +15,25 @@ const DEFAULT_CART_SETTINGS = {
   small_cart_max_amount: 0,
 };
 
-const getCartSettings = async (type = "Product") => {
+export const getCartSettings = async (type = "Product") => {
   const settings = await CartSettings.findOne({ type }).lean();
   return { ...DEFAULT_CART_SETTINGS, ...(settings || {}) };
+};
+
+const OBJECT_ID_REGEX = /^[a-f\d]{24}$/i;
+
+const assertObjectId = (value, name) => {
+  if (!OBJECT_ID_REGEX.test(String(value ?? ""))) {
+    throw new AppError(400, `${name} must be a valid ObjectId`);
+  }
+};
+
+const parseQuantity = (value) => {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new AppError(400, "quantity must be a positive integer");
+  }
+  return n;
 };
 
 const getMaxAllowedQty = async (productId, variantId) => {
@@ -26,14 +42,14 @@ const getMaxAllowedQty = async (productId, variantId) => {
     .lean();
 
   if (!product || product.status !== "active") {
-    throw new AppError("Product not available", 404);
+    throw new AppError(404, "Product not available");
   }
 
   let stock;
 
   if (product.hasVariants) {
     if (!variantId)
-      throw new AppError("Variant is required for this product", 400);
+      throw new AppError(400, "Variant is required for this product");
 
     const variant = await ProductVariant.findOne({
       _id: variantId,
@@ -43,16 +59,16 @@ const getMaxAllowedQty = async (productId, variantId) => {
       .lean();
 
     if (!variant || variant.status !== "active") {
-      throw new AppError("Variant not available", 404);
+      throw new AppError(404, "Variant not available");
     }
     if (variant.stockStatus !== "in_stock" || variant.stock <= 0) {
-      throw new AppError("Variant is out of stock", 409);
+      throw new AppError(409, "Variant is out of stock");
     }
     stock = variant.stock;
   } else {
-    if (variantId) throw new AppError("This product has no variants", 400);
+    if (variantId) throw new AppError(400, "This product has no variants");
     if (product.stockStatus !== "in_stock" || product.stock <= 0) {
-      throw new AppError("Product is out of stock", 409);
+      throw new AppError(409, "Product is out of stock");
     }
     stock = product.stock;
   }
@@ -94,7 +110,10 @@ export const CartService = {
 
     const [cart, settings] = await Promise.all([
       Cart.findOne({ user_id: userId })
-        .populate("items.product_id", "name slug mainImage price currency")
+        .populate(
+          "items.product_id",
+          "name slug mainImage price sellingPrice currency",
+        )
         .populate({
           path: "items.variant_id",
           select: "sku price images combination",
@@ -110,12 +129,12 @@ export const CartService = {
     if (!cart) return emptyCart;
 
     const items = cart.items
-      .filter((i) => i.product_id) 
+      .filter((i) => i.product_id)
       .map((i) => {
         const product = i.product_id;
         const variant = i.variant_id || null;
 
-        const unitPrice = variant?.price || product.price;
+        const unitPrice = variant?.sellingPrice || product.sellingPrice;
 
         return {
           productId: product._id,
@@ -142,12 +161,10 @@ export const CartService = {
         };
       });
 
-    // No valid items left (e.g. all products deleted) -> no fees
     if (items.length === 0) return emptyCart;
 
     const subtotal = items.reduce((s, i) => s + i.lineTotal, 0);
 
-    // Free delivery once subtotal reaches the configured minimum
     const deliveryFee =
       subtotal >= settings.free_delivery_min_amount
         ? 0
@@ -155,7 +172,6 @@ export const CartService = {
 
     const handlingFee = settings.handling_charge;
 
-    // Small cart surcharge when subtotal is below the configured max
     const smallCartFee =
       settings.small_cart_charge > 0 &&
       subtotal < settings.small_cart_max_amount
@@ -182,12 +198,18 @@ export const CartService = {
     quantity = 1,
     _retry = true,
   }) => {
+    assertObjectId(productId, "productId");
+
+    if (variantId) assertObjectId(variantId, "variantId");
+    quantity = parseQuantity(quantity);
+    variantId = variantId || null;
+
     const maxQty = await getMaxAllowedQty(productId, variantId);
 
     if (quantity > maxQty) {
       throw new AppError(
-        `Only ${maxQty} unit(s) can be added for this item`,
         409,
+        `Only ${maxQty} unit(s) can be added for this item`,
       );
     }
 
@@ -213,8 +235,8 @@ export const CartService = {
     });
     if (exists) {
       throw new AppError(
-        `Cart limit reached. Max ${maxQty} unit(s) allowed for this item`,
         409,
+        `Cart limit reached. Max ${maxQty} unit(s) allowed for this item`,
       );
     }
 
@@ -228,7 +250,7 @@ export const CartService = {
       return summarize(cart, productId, variantId);
     } catch (err) {
       if (err.code === 11000 && _retry) {
-        return addToCart({
+        return CartService.addToCart({
           userId,
           productId,
           variantId,
@@ -246,6 +268,12 @@ export const CartService = {
     variantId = null,
     quantity = 1,
   }) => {
+    assertObjectId(productId, "productId");
+
+    if (variantId) assertObjectId(variantId, "variantId");
+    quantity = parseQuantity(quantity);
+    variantId = variantId || null;
+
     const match = itemMatch(productId, variantId);
 
     // 1) Quantity remains above zero -> atomic decrement
@@ -268,7 +296,7 @@ export const CartService = {
       { $pull: { items: match } },
       { new: true },
     );
-    if (!cart) throw new AppError("Item not found in cart", 404);
+    if (!cart) throw new AppError(404, "Item not found in cart");
 
     return summarize(cart, productId, variantId);
   },
@@ -278,6 +306,9 @@ export const CartService = {
   },
 
   removeCartItem: async ({ userId, productId, variantId }) => {
+    assertObjectId(productId, "productId");
+    if (variantId) assertObjectId(variantId, "variantId");
+
     const match =
       variantId === undefined
         ? { product_id: new mongoose.Types.ObjectId(productId) }
@@ -289,7 +320,7 @@ export const CartService = {
       { new: true },
     );
 
-    if (!cart) throw new AppError("Item not found in cart", 404);
+    if (!cart) throw new AppError(404, "Item not found in cart");
 
     return {
       productId,
