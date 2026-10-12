@@ -4,56 +4,11 @@ import { authMiddleware } from "../../middlewares/auth.middleware.js";
 import { authorizeRoles, ROLES } from "../../middlewares/role.middleware.js";
 
 const router = express.Router();
+router.use(authMiddleware, authorizeRoles(ROLES.USER));
 
-// User order APIs
-router.post(
-  "/orders/place",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  OrderController.placeOrder
-);
-
-router.get(
-  "/orders",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  OrderController.listUserOrders
-);
-
-router.get(
-  "/orders/:order_id",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  OrderController.getUserOrderById
-);
-
-router.patch(
-  "/orders/:order_id/cancel",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  OrderController.cancelUserOrder
-);
-
-// Admin order APIs
-router.get(
-  "/admin/orders",
-  authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.VENDOR),
-  OrderController.listAdminOrders
-);
-
-router.get(
-  "/admin/orders/:order_id",
-  authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN),
-  OrderController.getAdminOrderById
-);
-
-router.patch(
-  "/admin/orders/:order_id/status",
-  authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN),
-  OrderController.updateOrderStatus
-);
+router.get("/", OrderController.listOrders);
+router.post("/place", OrderController.placeOrder);
+router.get("/:order_id", OrderController.getOrderById);
+router.patch("/:order_id/cancel", OrderController.cancelOrder);
 
 export default router;

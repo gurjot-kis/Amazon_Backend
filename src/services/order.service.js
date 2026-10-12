@@ -10,6 +10,7 @@ import { AppError } from "../utils/AppError.js";
 import { toObjectId, isObjectIdLike } from "../utils/object-id.js";
 import { getCartSettings } from "./cart.service.js";
 import { computeCartSummary } from "./cart-settings.service.js";
+import PaymentService from "./payment.service.js";
 
 /* -------------------------------------------------------------------------- */
 /*                                  Constants                                 */
@@ -34,7 +35,10 @@ const ALLOWED_PAYMENT_METHODS = ["COD"];
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
+const PREVIEW_IMAGES = 4;
 
+const USER_LIST_FIELDS =
+  "status totalItems grandTotal paymentMethod paymentReceived createdAt items.name items.mainImage";
 /* -------------------------------------------------------------------------- */
 /*                                   Helpers                                  */
 /* -------------------------------------------------------------------------- */
@@ -91,14 +95,15 @@ const buildPagination = (total, { page, limit }) => {
   };
 };
 
-const findPaginated = async (filter, pagination) => {
+const findPaginated = async (filter, pagination, select) => {
+  let query = Order.find(filter)
+    .sort({ createdAt: -1, _id: -1 })
+    .skip(pagination.skip)
+    .limit(pagination.limit);
+  if (select) query = query.select(select);
+
   const [orders, total] = await Promise.all([
-    Order.find(filter)
-      .sort({ createdAt: -1, _id: -1 })
-      .skip(pagination.skip)
-      .limit(pagination.limit)
-      .lean()
-      .exec(),
+    query.lean().exec(),
     Order.countDocuments(filter).exec(),
   ]);
   return { orders, pagination: buildPagination(total, pagination) };
@@ -209,6 +214,25 @@ const getUserNameMap = async (orders) => {
   return new Map(users.map((u) => [idToString(u._id), u.name]));
 };
 
+const mapOrderListItem = (order) => {
+  const items = order.items || [];
+  return {
+    _id: idToString(order._id),
+    status: order.status,
+    totalItems: Number(order.totalItems || 0),
+    grandTotal: Number(order.grandTotal || 0),
+    paymentMethod: order.paymentMethod,
+    paymentReceived: Number(order.paymentReceived || 0),
+    createdAt: order.createdAt,
+    itemNames: items.slice(0, 2).map((i) => i.name),
+    previewImages: items
+      .slice(0, PREVIEW_IMAGES)
+      .map((i) => i.mainImage || "")
+      .filter(Boolean),
+    moreItems: Math.max(0, items.length - 2),
+  };
+};
+
 /* -------------------------------------------------------------------------- */
 /*                                Stock helpers                               */
 /* -------------------------------------------------------------------------- */
@@ -224,7 +248,7 @@ const stockPipeline = (delta) => [
           "out_of_stock",
         ],
       },
-      updatedAt: "$$NOW", 
+      updatedAt: "$$NOW",
     },
   },
 ];
@@ -515,6 +539,8 @@ export const OrderService = {
         { session },
       );
 
+      await PaymentService.createPendingPayment({ order: created, session });
+
       await Cart.updateOne(
         { user_id: userId },
         { $set: { items: [] } },
@@ -532,8 +558,9 @@ export const OrderService = {
     const { orders, pagination } = await findPaginated(
       { user_id: userId },
       parsePagination({ page, limit }),
+      USER_LIST_FIELDS,
     );
-    return { orders: orders.map(mapOrder), pagination };
+    return { orders: orders.map(mapOrderListItem), pagination };
   },
 
   getUserOrderById: async ({ user_id, order_id }) => {
@@ -574,6 +601,10 @@ export const OrderService = {
           : new AppError(404, "Order not found");
       }
 
+      await PaymentService.handleOrderCancellation({
+        order_id: cancelled._id,
+        session,
+      });
       await restoreStock(cancelled.items, session);
       return cancelled.toObject();
     });
@@ -646,7 +677,7 @@ export const OrderService = {
     };
   },
 
-  updateOrderStatus: async ({ order_id, status, paymentReceived }) => {
+  updateOrderStatus: async ({ order_id, status }) => {
     const orderId = toObjectId(order_id, "order_id");
     const nextStatus = normalizeString(status).toLowerCase();
 
@@ -655,42 +686,34 @@ export const OrderService = {
       throw new AppError(400, "Invalid order status");
     }
 
-    let nextPaymentReceived;
-    if (paymentReceived !== undefined) {
-      nextPaymentReceived = Number(paymentReceived);
-      if (![0, 1].includes(nextPaymentReceived)) {
-        throw new AppError(400, "paymentReceived must be 0 or 1");
-      }
-    }
-
     const order = await runInTransaction(async (session) => {
       const doc = await Order.findById(orderId).session(session).exec();
       if (!doc) throw new AppError(404, "Order not found");
 
       const previousStatus = doc.status;
-      if (nextStatus !== previousStatus) {
-        if (!STATUS_TRANSITIONS[previousStatus]?.includes(nextStatus)) {
-          throw new AppError(
-            409,
-            `Cannot change order status from ${previousStatus} to ${nextStatus}`,
-          );
-        }
-        doc.status = nextStatus;
-      }
-      if (nextPaymentReceived !== undefined) {
-        doc.paymentReceived = nextPaymentReceived;
+      if (nextStatus === previousStatus) {
+        return { data: doc.toObject(), statusChanged: false };
       }
 
+      if (!STATUS_TRANSITIONS[previousStatus]?.includes(nextStatus)) {
+        throw new AppError(
+          409,
+          `Cannot change order status from ${previousStatus} to ${nextStatus}`,
+        );
+      }
+
+      doc.status = nextStatus;
       await doc.save({ session });
 
-      if (nextStatus === "cancelled" && previousStatus !== "cancelled") {
+      if (nextStatus === "cancelled") {
+        await PaymentService.handleOrderCancellation({
+          order_id: doc._id,
+          session,
+        });
         await restoreStock(doc.items, session);
       }
 
-      return {
-        data: doc.toObject(),
-        statusChanged: previousStatus !== nextStatus,
-      };
+      return { data: doc.toObject(), statusChanged: true };
     });
 
     if (order.statusChanged) void notifyStatusChange(order.data, nextStatus);
