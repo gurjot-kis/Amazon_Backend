@@ -30,7 +30,7 @@ export const ProductController = {
   productDetails: async (req, res, next) => {
     try {
       const { id } = req.params;
-      const product = await ProductService.getProductById(id);
+      const product = await ProductService.getMobileProductById(id);
 
       return sendSuccess(res, {
         message: "Product fetched successfully",

@@ -224,6 +224,7 @@ export const ProductService = {
     hasVariants,
     variantTypes,
     variants,
+    imageGroupTypeId,
   }) => {
     if (!name) throw new Error("Product name is required");
     if (!category_id) throw new Error("Category is required");
@@ -276,7 +277,6 @@ export const ProductService = {
 
     const stockCount = calcStock({ hasVariants, stock, variants });
 
-    // create product
     const product = new Product({
       name: normalizeName(name),
       slug: await generateUniqueSlug(name),
@@ -299,6 +299,7 @@ export const ProductService = {
       role,
       hasVariants: hasVariants || false,
       variantTypes: hasVariants ? variantTypes : [],
+      imageGroupTypeId: hasVariants ? imageGroupTypeId : null,
     });
 
     try {
@@ -397,6 +398,7 @@ export const ProductService = {
     const product = await Product.findById(id)
       .populate("category_id", "name _id category_image")
       .populate("variantTypes", "name")
+      .populate("imageGroupTypeId", "name _id")
       .lean();
 
     if (!product) throw new Error("Product not found");
@@ -411,6 +413,132 @@ export const ProductService = {
     }
 
     return product;
+  },
+
+  getMobileProductById: async (id) => {
+    const product = await Product.findById(id)
+      .populate("category_id", "name _id category_image")
+      .populate("variantTypes", "name _id")
+      .populate("imageGroupTypeId", "name _id")
+      .lean();
+
+    if (!product) throw new Error("Product not found");
+
+    if (!product.hasVariants) {
+      return {
+        _id: product._id,
+        name: product.name,
+        slug: product.slug,
+        description: product.description,
+        short_description: product.short_description,
+        mainImage: product.mainImage,
+        featuredImages: product.featuredImages,
+        sku: product.sku,
+        currency: product.currency,
+        costPrice: product.costPrice,
+        sellingPrice: product.sellingPrice,
+        price: product.price,
+        stock: product.stock,
+        stockStatus: product.stockStatus,
+        status: product.status,
+        category: product.category_id,
+        hasVariants: false,
+        variantTypes: [],
+        swatches: [],
+      };
+    }
+
+    const variants = await ProductVariant.find({
+      product_id: id,
+      status: "active",
+    })
+      .populate("combination.variant_type_id", "name _id")
+      .populate("combination.variant_option_id", "value label meta _id")
+      .lean();
+
+    const imageGroupTypeId = product.imageGroupTypeId
+      ? String(product.imageGroupTypeId._id || product.imageGroupTypeId)
+      : null;
+
+    const swatchMap = new Map();
+
+    variants.forEach((v) => {
+      const groupCombo = v.combination.find(
+        (c) => String(c.variant_type_id._id) === imageGroupTypeId,
+      );
+      if (!groupCombo) return;
+
+      const groupOptId = String(groupCombo.variant_option_id._id);
+
+      if (!swatchMap.has(groupOptId)) {
+        swatchMap.set(groupOptId, {
+          option: {
+            _id: groupCombo.variant_option_id._id,
+            value: groupCombo.variant_option_id.value,
+            label:
+              groupCombo.variant_option_id.label ||
+              groupCombo.variant_option_id.value,
+            meta: groupCombo.variant_option_id.meta || {},
+          },
+          images: v.images, // all images for this color
+          thumbnail: v.images[0] || null, // first image as swatch thumbnail
+          options: [], // available sizes/other options for this color
+        });
+      }
+
+      // Add the other dimension (Size) as an available option under this color
+      const otherCombos = v.combination.filter(
+        (c) => String(c.variant_type_id._id) !== imageGroupTypeId,
+      );
+
+      swatchMap.get(groupOptId).options.push({
+        variantId: v._id,
+        sku: v.sku,
+        costPrice: v.costPrice,
+        sellingPrice: v.sellingPrice,
+        price: v.price,
+        stock: v.stock,
+        stockStatus: v.stockStatus,
+        // The size (or other non-image dimension) for this specific variant
+        attributes: otherCombos.map((c) => ({
+          type: {
+            _id: c.variant_type_id._id,
+            name: c.variant_type_id.name,
+          },
+          option: {
+            _id: c.variant_option_id._id,
+            value: c.variant_option_id.value,
+            label: c.variant_option_id.label || c.variant_option_id.value,
+          },
+        })),
+      });
+    });
+
+    return {
+      _id: product._id,
+      name: product.name,
+      slug: product.slug,
+      description: product.description,
+      short_description: product.short_description,
+      mainImage: product.mainImage,
+      featuredImages: product.featuredImages,
+      sku: product.sku,
+      currency: product.currency,
+      costPrice: product.costPrice,
+      sellingPrice: product.sellingPrice,
+      price: product.price,
+      stock: product.stock,
+      stockStatus: product.stockStatus,
+      status: product.status,
+      category: product.category_id,
+      hasVariants: true,
+      variantTypes: product.variantTypes,
+      imageGroupType:
+        product.variantTypes.find(
+          (vt) => String(vt._id) === imageGroupTypeId,
+        ) || null,
+      swatches: Array.from(swatchMap.values()),
+    };
   },
 
   getProductsByCategoryId: async ({
@@ -451,6 +579,7 @@ export const ProductService = {
       hasVariants,
       variantTypes,
       variants,
+      imageGroupTypeId,
     },
   ) => {
     const product = await Product.findById(id).lean();
@@ -538,6 +667,7 @@ export const ProductService = {
             featuredImages: featuredImages || [],
             hasVariants: hasVariants || false,
             variantTypes: hasVariants ? variantTypes : [],
+            imageGroupTypeId: hasVariants ? imageGroupTypeId : null,
           },
         },
         { new: true, runValidators: true },

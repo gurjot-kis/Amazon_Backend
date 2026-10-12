@@ -100,6 +100,12 @@ const ProductSchema = new mongoose.Schema(
         ref: "VariantType",
       },
     ],
+
+    imageGroupTypeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "VariantType",
+      default: null,
+    },
   },
   { timestamps: true, versionKey: false },
 );

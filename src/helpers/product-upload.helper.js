@@ -1,4 +1,3 @@
-
 export const normalizeFeaturedImagesInput = (value) => {
   if (value === undefined || value === null) return undefined;
   if (Array.isArray(value))
@@ -16,7 +15,6 @@ export const normalizeFeaturedImagesInput = (value) => {
   return undefined;
 };
 
-// Normalize variant input if sent stringified via FormData
 const parseVariants = (variants) => {
   if (!variants) return [];
   if (Array.isArray(variants)) return variants;
@@ -33,7 +31,6 @@ const parseVariants = (variants) => {
 export const applyProductUploads = (body, files) => {
   const next = { ...(body || {}) };
 
-  // Handle both array format from multer.any() and object format from multer.fields()
   const fileList = Array.isArray(files)
     ? files
     : [
@@ -95,6 +92,11 @@ export const applyProductUploads = (body, files) => {
     });
   }
 
+  next.imageGroupTypeId =
+    next.imageGroupTypeId && next.imageGroupTypeId.trim() !== ""
+      ? next.imageGroupTypeId.trim()
+      : null;
+
   return next;
 };
 
@@ -131,7 +133,10 @@ export const applyProductUploadsForUpdate = (body, files, existingProduct) => {
       ? currentImages
       : keptInput.filter((p) => currentImages.includes(p));
 
-  next.featuredImages = [...new Set([...kept, ...uploadedFeatured])].slice(0, 6);
+  next.featuredImages = [...new Set([...kept, ...uploadedFeatured])].slice(
+    0,
+    6,
+  );
   delete next.existingFeaturedImages;
 
   // Handle variants in update
@@ -157,6 +162,11 @@ export const applyProductUploadsForUpdate = (body, files, existingProduct) => {
       };
     });
   }
+
+  next.imageGroupTypeId =
+    next.imageGroupTypeId && next.imageGroupTypeId.trim() !== ""
+      ? next.imageGroupTypeId.trim()
+      : null;
 
   return next;
 };

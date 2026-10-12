@@ -27,6 +27,7 @@ export const ProductController = {
         hasVariants,
         variantTypes,
         variants,
+        imageGroupTypeId,
       } = body;
 
       const product = await ProductService.createProduct({
@@ -55,6 +56,7 @@ export const ProductController = {
             ? JSON.parse(variants)
             : variants
           : [],
+        imageGroupTypeId,
       });
 
       return sendSuccess(res, {
@@ -131,6 +133,7 @@ export const ProductController = {
         hasVariants,
         variantTypes,
         variants,
+        imageGroupTypeId,
       } = body;
 
       const updated = await ProductService.updateProduct(id, {
@@ -157,6 +160,7 @@ export const ProductController = {
             ? JSON.parse(variants)
             : variants
           : [],
+        imageGroupTypeId,
       });
 
       return sendSuccess(res, {
