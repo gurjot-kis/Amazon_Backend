@@ -16,7 +16,10 @@ const DEFAULT_CART_SETTINGS = {
 };
 
 export const getCartSettings = async (type = "Product") => {
-  const settings = await CartSettings.findOne({ type }).lean();
+  const settings = await CartSettings.findOne({
+    type,
+    status: "active",
+  }).lean();
   return { ...DEFAULT_CART_SETTINGS, ...(settings || {}) };
 };
 
@@ -116,7 +119,7 @@ export const CartService = {
         )
         .populate({
           path: "items.variant_id",
-          select: "sku price images combination",
+          select: "sku price sellingPrice images combination",
           populate: [
             { path: "combination.variant_type_id", select: "name" },
             { path: "combination.variant_option_id", select: "value label" },
@@ -133,6 +136,7 @@ export const CartService = {
       .map((i) => {
         const product = i.product_id;
         const variant = i.variant_id || null;
+        console.log("variant +++++++++++++++++", variant)
 
         const unitPrice = variant?.sellingPrice || product.sellingPrice;
 
