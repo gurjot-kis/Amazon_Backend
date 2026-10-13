@@ -460,6 +460,55 @@ export const ProductService = {
       ? String(product.imageGroupTypeId._id || product.imageGroupTypeId)
       : null;
 
+    if (!imageGroupTypeId) {
+      return {
+        _id: product._id,
+        name: product.name,
+        slug: product.slug,
+        description: product.description,
+        short_description: product.short_description,
+        mainImage: product.mainImage,
+        featuredImages: product.featuredImages,
+        sku: product.sku,
+        currency: product.currency,
+        costPrice: product.costPrice,
+        sellingPrice: product.sellingPrice,
+        price: product.price,
+        stock: product.stock,
+        stockStatus: product.stockStatus,
+        status: product.status,
+        category: product.category_id,
+        hasVariants: true,
+        variantTypes: product.variantTypes,
+        imageGroupType: null,
+        swatches: [
+          {
+            option: null,
+            options: variants.map((v) => ({
+              variantId: v._id,
+              sku: v.sku,
+              costPrice: v.costPrice,
+              sellingPrice: v.sellingPrice,
+              price: v.price,
+              stock: v.stock,
+              stockStatus: v.stockStatus,
+              attributes: v.combination.map((c) => ({
+                type: {
+                  _id: c.variant_type_id._id,
+                  name: c.variant_type_id.name,
+                },
+                option: {
+                  _id: c.variant_option_id._id,
+                  value: c.variant_option_id.value,
+                  label: c.variant_option_id.label || c.variant_option_id.value,
+                },
+              })),
+            })),
+          },
+        ],
+      };
+    }
+
     const swatchMap = new Map();
 
     variants.forEach((v) => {

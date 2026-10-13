@@ -8,6 +8,8 @@ import { toObjectId } from "../utils/object-id.js";
 import { runInTransaction } from "../utils/transaction.js";
 import { buildPagination, parsePagination } from "./pagination.service.js";
 
+const COLLECTABLE_ORDER_STATUSES = ["shipped", "delivered"];
+
 const idToString = (value) => (value == null ? null : String(value));
 
 const mapPayment = (payment, { admin = false } = {}) => {

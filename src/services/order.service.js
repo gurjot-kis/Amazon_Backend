@@ -580,7 +580,6 @@ export const OrderService = {
     const orderId = toObjectId(order_id, "order_id");
 
     const order = await runInTransaction(async (session) => {
-      // Single atomic status flip prevents double-cancel / double stock restore.
       const cancelled = await Order.findOneAndUpdate(
         {
           _id: orderId,
