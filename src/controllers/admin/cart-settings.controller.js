@@ -20,6 +20,7 @@ export const CartSettingsController = {
   createCartSettings: async (req, res) => {
     try {
       const payload = applyVendorScope(req, { ...(req.body || {}) });
+      // status comes from body ("active" | "inactive"), defaults to "active" in service
       const data = await CartSettingsService.createCartSettings(payload);
 
       return sendSuccess(res, {
@@ -34,13 +35,8 @@ export const CartSettingsController = {
 
   listCartSettings: async (req, res) => {
     try {
-      const { page, limit } = req.query || {};
-      const query = applyVendorScope(req, {
-        page,
-        limit,
-        user_id: req.query?.user_id,
-        role: req.query?.role,
-      });
+      const { page, limit, user_id, role, status } = req.query || {};
+      const query = applyVendorScope(req, { page, limit, user_id, role, status });
 
       const { items, pagination } =
         await CartSettingsService.listCartSettings(query);
@@ -51,11 +47,9 @@ export const CartSettingsController = {
         data: items,
         pagination,
       });
-    } catch (_err) {
-      return sendError(res, {
-        code: 500,
-        message: "Unable to fetch cart settings",
-      });
+    } catch (err) {
+      console.error("listCartSettings error:", err);
+      return sendError(res, { code: 500, message: "Unable to fetch cart settings" });
     }
   },
 
@@ -80,11 +74,11 @@ export const CartSettingsController = {
     }
   },
 
-  // Handles both PUT and PATCH (partial update).
   updateCartSettings: async (req, res) => {
     try {
       const { id } = req.params || {};
       const payload = applyVendorScope(req, { ...(req.body || {}) });
+      // status can be updated via PATCH body alongside other fields
 
       const data = await CartSettingsService.updateCartSettings({
         _id: id,
@@ -98,6 +92,23 @@ export const CartSettingsController = {
       });
     } catch (err) {
       return handleError(res, err, "Cart settings update failed");
+    }
+  },
+
+  toggleCartSettingsStatus: async (req, res) => {
+    try {
+      const { id } = req.params || {};
+      const query = applyVendorScope(req, { _id: id });
+
+      const data = await CartSettingsService.toggleCartSettingsStatus(query);
+
+      return sendSuccess(res, {
+        code: 200,
+        message: `Cart settings ${data.status === "active" ? "activated" : "deactivated"} successfully`,
+        data,
+      });
+    } catch (err) {
+      return handleError(res, err, "Cart settings status toggle failed");
     }
   },
 
