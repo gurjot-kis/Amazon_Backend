@@ -37,9 +37,10 @@ const UserSchema = new mongoose.Schema(
     },
     googleId: { type: String, default: "", trim: true, index: true },
     facebookId: { type: String, default: "", trim: true, index: true },
+    appleId: {type: String, default: "", trim: true, index: true},
     authProvider: {
       type: String,
-      enum: ["local", "google", "facebook"],
+      enum: ["local", "google", "facebook", "apple"],
       default: "local",
       index: true,
     },
