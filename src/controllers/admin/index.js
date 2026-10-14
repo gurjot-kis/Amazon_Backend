@@ -6,6 +6,7 @@ import VariantOptionController from "./variantOption.controller.js";
 import CartSettingsController from "./cart-settings.controller.js";
 import OrderController from "./order.controller.js";
 import PaymentController from "./payment.controller.js";
+import VendorController from "./vendor.controller.js";
 
 export {
   BannerController,
@@ -15,5 +16,6 @@ export {
   VariantOptionController,
   CartSettingsController,
   OrderController,
-  PaymentController
+  PaymentController,
+  VendorController,
 };

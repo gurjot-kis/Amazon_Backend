@@ -7,6 +7,7 @@ import CartSettingsRoutes from "./cart-settings.routes.js";
 import BannerRoutes from "./banner.routes.js";
 import OrderRoutes from "./order.routes.js";
 import PaymentRoutes from "./payment.routes.js";
+import VendorRoutes from "./vendor.routes.js";
 
 const router = express.Router();
 
@@ -18,5 +19,6 @@ router.use("/cart-settings", CartSettingsRoutes);
 router.use("/banner", BannerRoutes);
 router.use("/order", OrderRoutes);
 router.use("/payment", PaymentRoutes);
+router.use("/vendors", VendorRoutes);
 
 export default router;
