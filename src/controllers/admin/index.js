@@ -7,6 +7,7 @@ import CartSettingsController from "./cart-settings.controller.js";
 import OrderController from "./order.controller.js";
 import PaymentController from "./payment.controller.js";
 import VendorController from "./vendor.controller.js";
+import StoreController from "./store.controller.js";
 
 export {
   BannerController,
@@ -18,4 +19,5 @@ export {
   OrderController,
   PaymentController,
   VendorController,
+  StoreController,
 };

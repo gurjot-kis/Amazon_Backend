@@ -1,0 +1,76 @@
+import fs from "fs";
+import { sendSuccess } from "../../helpers/response.helper.js";
+import StoreService from "../../services/store.service.js";
+
+const toUrl = (file) => (file ? `/uploads/stores/${file.filename}` : undefined);
+
+const getImages = (req) => ({
+  store_logo: toUrl(req.files?.store_logo?.[0]),
+  store_banner: toUrl(req.files?.store_banner?.[0]),
+});
+
+const cleanupUploads = (req) => {
+  Object.values(req.files || {})
+    .flat()
+    .forEach((file) => fs.unlink(file.path, () => {}));
+};
+
+export const StoreController = {
+  createStore: async (req, res, next) => {
+    try {
+      const store = await StoreService.createStore(
+        req.user._id,
+        req.body,
+        getImages(req),
+      );
+      return sendSuccess(res, {
+        code: 201,
+        message: "Store created successfully",
+        data: store,
+      });
+    } catch (error) {
+      cleanupUploads(req);
+      next(error);
+    }
+  },
+
+  getMyStores: async (req, res, next) => {
+    try {
+      const { page, limit, search, status, verification_status } = req.query;
+      const { data, pagination } = await StoreService.getMyStores(
+        req.user._id,
+        {
+          page,
+          limit,
+          search,
+          status,
+          verification_status,
+        },
+      );
+      return sendSuccess(res, {
+        message: "Stores fetched successfully",
+        data,
+        pagination,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  getMyStoreById: async (req, res, next) => {
+    try {
+      const store = await StoreService.getMyStoreById(
+        req.user._id,
+        req.params.id,
+      );
+      return sendSuccess(res, {
+        message: "Store fetched successfully",
+        data: store,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+};
+
+export default StoreController;

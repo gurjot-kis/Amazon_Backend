@@ -257,9 +257,7 @@ export const VendorService = {
       user_id: String(user_id).trim(),
       role: "Vendor",
     })
-      .select(
-        "_id name email phone address profilePicture",
-      )
+      .select("_id name email phone address profilePicture")
       .lean()
       .exec();
 
@@ -270,6 +268,94 @@ export const VendorService = {
     return buildVendorProfileResponse(vendor);
   },
 
+  updateProfile: async ({
+    user_id,
+    name,
+    email,
+    phone,
+    address,
+    gst,
+    code,
+    password,
+    profilePicture,
+  }) => {
+    if (
+      !name &&
+      !email &&
+      phone === undefined &&
+      address === undefined &&
+      gst === undefined &&
+      !password &&
+      !profilePicture
+    ) {
+      throw new Error("At least one field is required to update");
+    }
+
+    const vendor = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "Vendor",
+    }).exec();
+
+    if (!vendor) {
+      throw new Error("Vendor not found");
+    }
+
+    // Email
+    if (email) {
+      const normalizedEmail = normalizeEmail(email);
+
+      const duplicate = await User.findOne({
+        email: normalizedEmail,
+        user_id: {
+          $ne: String(user_id).trim(),
+        },
+      }).exec();
+
+      if (duplicate) {
+        throw new Error("Email already in use");
+      }
+
+      vendor.email = normalizedEmail;
+    }
+
+    // Name
+    if (name) {
+      vendor.name = normalizeName(name);
+    }
+
+    // Phone
+    if (phone !== undefined) {
+      vendor.phone = String(phone).trim();
+    }
+
+    // Address
+    if (address !== undefined) {
+      vendor.address = String(address).trim();
+    }
+
+    // GST
+    if (gst !== undefined) {
+      vendor.gst_number = String(gst).trim();
+    }
+
+    if (code !== undefined) {
+      vendor.code = String(code).trim();
+    }
+
+    // Password - only update when provided
+    if (password) {
+      vendor.passwordHash = await bcrypt.hash(String(password), 10);
+    }
+
+    // Profile picture
+    if (profilePicture) {
+      vendor.profilePicture = profilePicture;
+    }
+
+    await vendor.save();
+
+    return buildVendorResponse(vendor);
+  },
 };
 
 export default VendorService;
