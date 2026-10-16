@@ -84,6 +84,11 @@ const ProductSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    store_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Store",
+      required: true,
+    },
     role: {
       type: String,
       enum: ["SuperAdmin", "User", "Vendor"],

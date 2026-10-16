@@ -12,6 +12,13 @@ router
   .get(StoreController.getMyStores)
   .post(uploadStoreImages, StoreController.createStore);
 
-router.route("/:id").get(StoreController.getMyStoreById);
+router
+  .route("/:id")
+  .get(StoreController.getMyStoreById)
+  .put(uploadStoreImages, StoreController.updateStore)
+  .delete(StoreController.deleteStore);
+
+router.patch("/:id/default", StoreController.setDefaultStore);
+router.patch("/:id/status", StoreController.toggleStoreStatus);
 
 export default router;

@@ -71,6 +71,66 @@ export const StoreController = {
       next(error);
     }
   },
+
+  updateStore: async (req, res, next) => {
+    try {
+      const updated = await StoreService.updateStore(
+        req.user._id,
+        req.params.id,
+        req.body,
+        getImages(req),
+      );
+      return sendSuccess(res, {
+        message: "Store updated successfully",
+        data: updated,
+      });
+    } catch (error) {
+      cleanupUploads(req);
+      next(error);
+    }
+  },
+
+  setDefaultStore: async (req, res, next) => {
+    try {
+      const store = await StoreService.setDefaultStore(
+        req.user._id,
+        req.params.id,
+      );
+      return sendSuccess(res, {
+        message: "Default store updated successfully",
+        data: store,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  toggleStoreStatus: async (req, res, next) => {
+    try {
+      const store = await StoreService.toggleStoreStatus(
+        req.user._id,
+        req.params.id,
+      );
+      return sendSuccess(res, {
+        message: `Store ${store.status} successfully`,
+        data: store,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  deleteStore: async (req, res, next) => {
+    try {
+      await StoreService.deleteStore(req.user._id, req.params.id);
+      return sendSuccess(res, {
+        message: "Store deleted successfully",
+        data: null,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
 };
 
 export default StoreController;

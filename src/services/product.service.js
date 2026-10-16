@@ -4,6 +4,7 @@ import Category from "../models/category.model.js";
 import ProductVariant from "../models/productVariant.model.js";
 import VariantType from "../models/variantType.model.js";
 import VariantOption from "../models/variantOption.model.js";
+import Store from "../models/store.model.js";
 import { paginateAggregate } from "./pagination.service.js";
 
 const normalizeName = (value) => String(value).trim();
@@ -12,6 +13,7 @@ const normalizeSku = (s) =>
     .trim()
     .toUpperCase();
 const SKU_REGEX = /^[A-Z0-9][A-Z0-9\-_]{1,49}$/;
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const assertUniqueSkus = async ({
   productSku,
@@ -205,6 +207,22 @@ const validateVariants = async (variantTypes, variants) => {
   });
 };
 
+const assertVendorStore = async (vendor_id, store_id) => {
+  if (!store_id) throw new Error("Store is required");
+  if (!mongoose.Types.ObjectId.isValid(store_id)) {
+    throw new Error("Invalid store ID");
+  }
+  const store = await Store.findOne({ _id: store_id, vendor_id })
+    .select("_id status")
+    .lean();
+  if (!store) throw new Error("Store not found");
+  return store;
+};
+
+const assertObjectId = (id, label) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) throw new Error(`Invalid ${label}`);
+};
+
 export const ProductService = {
   createProduct: async ({
     name,
@@ -220,6 +238,7 @@ export const ProductService = {
     mainImage,
     featuredImages,
     user_id,
+    store_id,
     role,
     hasVariants,
     variantTypes,
@@ -235,6 +254,11 @@ export const ProductService = {
     if (sellingPrice === undefined)
       throw new Error("Selling price is required");
     if (price === undefined) throw new Error("Price is required");
+
+    const store = await assertVendorStore(user_id, store_id);
+    if (store.status !== "active") {
+      throw new Error("Products can only be added to an active store");
+    }
 
     assertPricing({ costPrice, sellingPrice, price });
     if (hasVariants)
@@ -267,8 +291,6 @@ export const ProductService = {
         "Product can only be added to a leaf category (category with no subcategories)",
       );
 
-    // const existingSku = await Product.findOne({ sku: sku.trim() }).lean();
-    // if (existingSku) throw new Error("Product with this SKU already exists");
     const normalizedSku = normalizeSku(sku);
     await assertUniqueSkus({
       productSku: normalizedSku,
@@ -279,6 +301,7 @@ export const ProductService = {
 
     const product = new Product({
       name: normalizeName(name),
+      store_id,
       slug: await generateUniqueSlug(name),
       description: description ? String(description).trim() : "",
       short_description: short_description
@@ -346,11 +369,21 @@ export const ProductService = {
     search = "",
     category_id = "",
     status = "",
+    user_id = "",
+    store_id = "",
   } = {}) => {
     const matchStage = {};
-    if (search) matchStage.name = { $regex: search, $options: "i" };
-    if (category_id)
+    if (search)
+      matchStage.name = { $regex: escapeRegex(search), $options: "i" };
+    if (category_id) {
+      assertObjectId(category_id, "category ID");
       matchStage.category_id = new mongoose.Types.ObjectId(category_id);
+    }
+    if (store_id) {
+      assertObjectId(store_id, "store ID");
+      matchStage.store_id = new mongoose.Types.ObjectId(store_id);
+    }
+    if (user_id) matchStage.user_id = new mongoose.Types.ObjectId(user_id);
     if (status) matchStage.status = status;
 
     const pipeline = [
@@ -394,9 +427,15 @@ export const ProductService = {
     return { data, pagination };
   },
 
-  getProductById: async (id) => {
-    const product = await Product.findById(id)
+  getProductById: async (id, { user_id } = {}) => {
+    assertObjectId(id, "product ID");
+
+    const filter = { _id: id };
+    if (user_id) filter.user_id = user_id;
+
+    const product = await Product.findOne(filter)
       .populate("category_id", "name _id category_image")
+      .populate("store_id", "store_name store_logo")
       .populate("variantTypes", "name")
       .populate("imageGroupTypeId", "name _id")
       .lean();
@@ -423,11 +462,22 @@ export const ProductService = {
       .lean();
 
     if (!product) throw new Error("Product not found");
+    if (product.status !== "active") throw new Error("Product not found");
+
+    const store = await Store.findOne({
+      _id: product.store_id,
+      status: "active",
+      verification_status: "verified",
+    })
+      .select("_id store_name store_logo")
+      .lean();
+    if (!store) throw new Error("Product not found");
 
     if (!product.hasVariants) {
       return {
         _id: product._id,
         name: product.name,
+        store,
         slug: product.slug,
         description: product.description,
         short_description: product.short_description,
@@ -464,6 +514,7 @@ export const ProductService = {
       return {
         _id: product._id,
         name: product.name,
+        store,
         slug: product.slug,
         description: product.description,
         short_description: product.short_description,
@@ -566,6 +617,7 @@ export const ProductService = {
     return {
       _id: product._id,
       name: product.name,
+      store,
       slug: product.slug,
       description: product.description,
       short_description: product.short_description,
@@ -592,26 +644,39 @@ export const ProductService = {
 
   getProductsByCategoryId: async ({
     category_id,
+    store_id,
     page = 1,
     limit = 10,
     search = "",
-    status = "",
   } = {}) => {
     if (!category_id || !mongoose.Types.ObjectId.isValid(category_id)) {
       throw new Error("Valid category ID is required");
     }
+    if (!store_id || !mongoose.Types.ObjectId.isValid(store_id)) {
+      throw new Error("Valid store ID is required");
+    }
 
-    return await ProductService.getAllProducts({
+    // Customers can only browse stores that are live
+    const store = await Store.exists({
+      _id: store_id,
+      status: "active",
+      verification_status: "verified",
+    });
+    if (!store) throw new Error("Store is not available");
+
+    return ProductService.getAllProducts({
       category_id,
+      store_id,
       page,
       limit,
       search,
-      status,
+      status: "active", // forced; customers never choose the status
     });
   },
 
   updateProduct: async (
     id,
+    vendor_id,
     {
       name,
       description,
@@ -631,7 +696,11 @@ export const ProductService = {
       imageGroupTypeId,
     },
   ) => {
-    const product = await Product.findById(id).lean();
+    assertObjectId(id, "product ID");
+    const product = await Product.findOne({
+      _id: id,
+      user_id: vendor_id,
+    }).lean();
     if (!product) throw new Error("Product not found");
 
     if (!name) throw new Error("Product name is required");
@@ -857,14 +926,120 @@ export const ProductService = {
     return updated;
   },
 
-  deleteProduct: async (id) => {
-    const product = await Product.findById(id).lean();
+  deleteProduct: async (id, vendor_id) => {
+    assertObjectId(id, "product ID");
+    const product = await Product.findOne({ _id: id, user_id: vendor_id })
+      .select("_id")
+      .lean();
     if (!product) throw new Error("Product not found");
 
     await Promise.all([
       Product.findByIdAndDelete(id),
       ProductVariant.deleteMany({ product_id: id }),
     ]);
+  },
+
+  getVendorProducts: async ({ vendor_id, store_id, ...filters }) => {
+    if (store_id) {
+      await assertVendorStore(vendor_id, store_id);
+    }
+    return ProductService.getAllProducts({
+      ...filters,
+      user_id: vendor_id,
+      store_id,
+    });
+  },
+
+  getAllVendorProductsAcrossStores: async ({
+    vendor_id,
+    page,
+    limit,
+    search = "",
+    category_id = "",
+    status = "",
+  } = {}) => {
+    const matchStage = { user_id: new mongoose.Types.ObjectId(vendor_id) };
+    if (search)
+      matchStage.name = { $regex: escapeRegex(search), $options: "i" };
+    if (category_id) {
+      assertObjectId(category_id, "category ID");
+      matchStage.category_id = new mongoose.Types.ObjectId(category_id);
+    }
+    if (status) matchStage.status = status;
+
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "stores",
+          localField: "store_id",
+          foreignField: "_id",
+          as: "store",
+          pipeline: [{ $project: { _id: 1, store_name: 1, store_logo: 1 } }],
+        },
+      },
+      {
+        $unwind: { path: "$store", preserveNullAndEmptyArrays: true },
+      },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "category_id",
+          foreignField: "_id",
+          as: "category",
+          pipeline: [{ $project: { _id: 1, name: 1, category_image: 1 } }],
+        },
+      },
+      { $unwind: { path: "$category", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          mainImage: 1,
+          sku: 1,
+          price: 1,
+          sellingPrice: 1,
+          costPrice: 1,
+          currency: 1,
+          stock: 1,
+          stockStatus: 1,
+          status: 1,
+          hasVariants: 1,
+          category: 1,
+          store: 1,
+          createdAt: 1,
+        },
+      },
+      { $sort: { createdAt: -1 } },
+    ];
+
+    return paginateAggregate(Product, pipeline, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
+    });
+  },
+
+  updateVendorProductStatus: async (id, vendor_id, status) => {
+    assertObjectId(id, "product ID");
+    if (!["active", "inactive"].includes(status)) {
+      throw new Error("Status must be active or inactive");
+    }
+
+    const product = await Product.findOne({ _id: id, user_id: vendor_id })
+      .select("status")
+      .lean();
+    if (!product) throw new Error("Product not found");
+    if (["pending", "rejected"].includes(product.status)) {
+      throw new Error(
+        `A ${product.status} product cannot be changed until approved`,
+      );
+    }
+
+    return Product.findByIdAndUpdate(
+      id,
+      { $set: { status } },
+      { new: true },
+    ).lean();
   },
 };
 

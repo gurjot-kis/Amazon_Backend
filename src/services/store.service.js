@@ -276,7 +276,6 @@ export const StoreService = {
     // TODO: block deletion if products/orders reference this store
     await Store.deleteOne({ _id: id, vendor_id });
 
-    // Promote another store if the default was deleted
     if (store.is_default) {
       const next = await Store.findOne({ vendor_id, status: "active" })
         .sort({ createdAt: 1 })

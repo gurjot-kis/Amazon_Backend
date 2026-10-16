@@ -4,10 +4,11 @@ import CategoryService from "../../services/category.service.js";
 export const CategoryController = {
   getAllCategories: async (req, res, next) => {
     try {
-      const { page, limit } = req.query;
+      const { store_id, page, limit } = req.query;
 
       const { data, pagination } =
         await CategoryService.getAllCategoriesForUser({
+          store_id,
           page,
           limit,
         });

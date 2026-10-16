@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Category from "../models/category.model.js";
 import { paginateAggregate } from "./pagination.service.js";
+import Product from "../models/product.model.js";
 
 const normalizeName = (value) => String(value).trim();
 
@@ -345,11 +346,59 @@ export const CategoryService = {
     await Category.findByIdAndDelete(id);
   },
 
-  getAllCategoriesForUser: async ({ page = 1, limit = 10 } = {}) => {
+  getAllCategoriesForUser: async ({ store_id, page = 1, limit = 10 } = {}) => {
+    if (!store_id || !mongoose.Types.ObjectId.isValid(store_id)) {
+      throw new Error("Valid store ID is required");
+    }
+    const activeCategoryIds = await Product.distinct("category_id", {
+      store_id: new mongoose.Types.ObjectId(store_id),
+      status: "active",
+    });
+
+    if (!activeCategoryIds.length) {
+      return {
+        data: [],
+        pagination: {
+          total: 0,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: 0,
+          hasNextPage: false,
+          hasPrevPage: false,
+        },
+      };
+    }
+
+    const allCategories = await Category.find({ status: "active" })
+      .select("_id parent_id")
+      .lean();
+
+    const idSet = new Set(activeCategoryIds.map(String));
+
+    const addAncestors = (id) => {
+      const cat = allCategories.find((c) => c._id.toString() === id);
+      if (!cat || !cat.parent_id) return;
+      const parentStr = cat.parent_id.toString();
+      if (!idSet.has(parentStr)) {
+        idSet.add(parentStr);
+        addAncestors(parentStr);
+      }
+    };
+
+    activeCategoryIds.forEach((id) => addAncestors(id.toString()));
+
+    const relevantIds = [...idSet].map((id) => new mongoose.Types.ObjectId(id));
+
     const { data: roots, pagination } = await paginateAggregate(
       Category,
       [
-        { $match: { parent_id: null, status: "active" } },
+        {
+          $match: {
+            _id: { $in: relevantIds },
+            parent_id: null,
+            status: "active",
+          },
+        },
         { $sort: { display_order: 1 } },
         {
           $project: {
@@ -368,14 +417,21 @@ export const CategoryService = {
       return { data: [], pagination };
     }
 
-    const allActiveCategories = await Category.find({ status: "active" })
+    const allRelevant = await Category.find({
+      _id: { $in: relevantIds },
+      status: "active",
+    })
       .select("_id name parent_id category_image description display_order")
       .sort({ display_order: 1 })
       .lean();
 
     const buildTree = (parentId) => {
-      return allActiveCategories
-        .filter((c) => c.parent_id?.toString() === parentId.toString())
+      return allRelevant
+        .filter((c) =>
+          parentId === null
+            ? c.parent_id === null
+            : c.parent_id?.toString() === parentId.toString(),
+        )
         .map((c) => ({
           _id: c._id,
           name: c.name,

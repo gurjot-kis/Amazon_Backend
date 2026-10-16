@@ -5,15 +5,15 @@ export const ProductController = {
   getProductsByCategoryId: async (req, res, next) => {
     try {
       const { categoryId } = req.params;
-      const { page, limit, search, status } = req.query;
+      const {store_id, page, limit, search } = req.query;
 
       const { data, pagination } = await ProductService.getProductsByCategoryId(
         {
           category_id: categoryId,
+          store_id,
           page,
           limit,
           search,
-          status,
         },
       );
 
