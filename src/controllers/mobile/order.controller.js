@@ -27,11 +27,18 @@ const handle = (fallbackMessage, fn) => async (req, res) => {
   }
 };
 
+const activeStoreId = (req) => {
+  const id = req.activeStoreId;
+  if (!id) throw new AppError(400, "No active store selected");
+  return id;
+};
+
 export const OrderController = {
   placeOrder: handle("Unable to place order", async (req, res) => {
     const { address_id, paymentMethod } = req.body || {};
     const data = await OrderService.placeOrder({
       user_id: authId(req),
+      store_id: activeStoreId(req),
       address_id,
       paymentMethod,
     });
@@ -46,6 +53,7 @@ export const OrderController = {
     const { page, limit } = req.query || {};
     const { orders, pagination } = await OrderService.listUserOrders({
       user_id: authId(req),
+      store_id: activeStoreId(req),
       page,
       limit,
     });
@@ -72,6 +80,5 @@ export const OrderController = {
     return sendSuccess(res, { message: "Order cancelled successfully", data });
   }),
 };
-
 
 export default OrderController;

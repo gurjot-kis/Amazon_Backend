@@ -22,6 +22,11 @@ const UserSchema = new mongoose.Schema(
     address: { type: String, default: "" },
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
+    active_store_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Store",
+      default: null,
+    },
     code: { type: String, default: "", trim: true },
     gst_number: { type: String, default: "", trim: true },
     role: {

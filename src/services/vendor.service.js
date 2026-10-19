@@ -24,9 +24,8 @@ const buildVendorProfileResponse = (vendor) => ({
   fullName: vendor.name,
   email: vendor.email,
   phone: vendor.phone || "",
-  address: vendor.address || "",
-  gst_number: vendor.gst_number || "",
-  code: vendor.code || "",
+  address: vendor.address || "",  
+  profilePicture: vendor.profilePicture || "",
 });
 
 export const VendorService = {
@@ -254,7 +253,7 @@ export const VendorService = {
 
   getProfile: async ({ user_id }) => {
     const vendor = await User.findOne({
-      user_id: String(user_id).trim(),
+      _id: String(user_id).trim(),
       role: "Vendor",
     })
       .select("_id name email phone address profilePicture")

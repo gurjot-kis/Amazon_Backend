@@ -15,16 +15,42 @@ const handleError = (res, err, fallbackMessage) => {
 };
 
 const getUserId = (req) => req.user?._id || req.user?.id;
+const getStoreId = (req) => req.activeStoreId;
+
+const getContext = (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) {
+    sendError(res, { code: 401, message: "Unauthorized" });
+    return null;
+  }
+  const storeId = getStoreId(req);
+  if (!storeId) {
+    sendError(res, { code: 400, message: "Active store id is required" });
+    return null;
+  }
+  return { userId, storeId };
+};
 
 export const CartController = {
-  getCart: async (req, res) => {
+  getUserCarts: async (req, res) => {
     try {
       const userId = getUserId(req);
       if (!userId)
         return sendError(res, { code: 401, message: "Unauthorized" });
 
-      const cart = await CartService.getCart(userId);
+      const data = await CartService.getUserCarts(userId);
+      return sendSuccess(res, { message: "Carts fetched successfully", data });
+    } catch (err) {
+      return handleError(res, err, "Failed to fetch carts");
+    }
+  },
 
+  getCart: async (req, res) => {
+    try {
+      const ctx = getContext(req, res);
+      if (!ctx) return;
+
+      const cart = await CartService.getCart(ctx.userId, ctx.storeId);
       return sendSuccess(res, {
         message: "Cart fetched successfully",
         data: cart,
@@ -36,14 +62,13 @@ export const CartController = {
 
   addToCart: async (req, res) => {
     try {
-      const userId = getUserId(req);
-      if (!userId)
-        return sendError(res, { code: 401, message: "Unauthorized" });
+      const ctx = getContext(req, res);
+      if (!ctx) return;
 
       const { productId, variantId = null, quantity = 1 } = req.body;
 
       const data = await CartService.addToCart({
-        userId,
+        ...ctx,
         productId,
         variantId,
         quantity,
@@ -57,14 +82,13 @@ export const CartController = {
 
   decrementCartItem: async (req, res) => {
     try {
-      const userId = getUserId(req);
-      if (!userId)
-        return sendError(res, { code: 401, message: "Unauthorized" });
+      const ctx = getContext(req, res);
+      if (!ctx) return;
 
       const { productId, variantId = null, quantity = 1 } = req.body;
 
       const data = await CartService.decrementCartItem({
-        userId,
+        ...ctx,
         productId,
         variantId,
         quantity,
@@ -78,15 +102,14 @@ export const CartController = {
 
   clearCart: async (req, res) => {
     try {
-      const userId = getUserId(req);
-      if (!userId)
-        return sendError(res, { code: 401, message: "Unauthorized" });
+      const ctx = getContext(req, res);
+      if (!ctx) return;
 
-      await CartService.clearCart(userId);
+      await CartService.clearCart(ctx.userId, ctx.storeId);
 
       return sendSuccess(res, {
         message: "Cart cleared successfully",
-        data: { totalItems: 0 },
+        data: { storeId: ctx.storeId, totalItems: 0 },
       });
     } catch (err) {
       return handleError(res, err, "Failed to clear cart");
@@ -95,14 +118,13 @@ export const CartController = {
 
   removeCartItem: async (req, res) => {
     try {
-      const userId = getUserId(req);
-      if (!userId)
-        return sendError(res, { code: 401, message: "Unauthorized" });
+      const ctx = getContext(req, res);
+      if (!ctx) return;
 
       const { productId, variantId } = req.body;
 
       const data = await CartService.removeCartItem({
-        userId,
+        ...ctx,
         productId,
         variantId,
       });

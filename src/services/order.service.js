@@ -5,6 +5,7 @@ import Product from "../models/product.model.js";
 import ProductVariant from "../models/productVariant.model.js";
 import Address from "../models/address.model.js";
 import User from "../models/user.model.js";
+import Store from "../models/store.model.js";
 import { sendEmail } from "../utils/email.js";
 import { AppError } from "../utils/AppError.js";
 import { toObjectId, isObjectIdLike } from "../utils/object-id.js";
@@ -38,7 +39,7 @@ const MAX_LIMIT = 100;
 const PREVIEW_IMAGES = 4;
 
 const USER_LIST_FIELDS =
-  "status totalItems grandTotal paymentMethod paymentReceived createdAt items.name items.mainImage";
+  "store_id status totalItems grandTotal paymentMethod paymentReceived createdAt items.name items.mainImage";
 /* -------------------------------------------------------------------------- */
 /*                                   Helpers                                  */
 /* -------------------------------------------------------------------------- */
@@ -172,6 +173,7 @@ const mapSummary = (order) => {
 const mapOrder = (order) => ({
   _id: idToString(order._id),
   user_id: idToString(order.user_id),
+  store_id: idToString(order.store_id),
   items: (order.items || []).map(mapItem),
   shippingAddress: mapShippingAddress(order.shippingAddress),
   totalItems: Number(order.totalItems || 0),
@@ -218,6 +220,7 @@ const mapOrderListItem = (order) => {
   const items = order.items || [];
   return {
     _id: idToString(order._id),
+    store_id: idToString(order.store_id),
     status: order.status,
     totalItems: Number(order.totalItems || 0),
     grandTotal: Number(order.grandTotal || 0),
@@ -359,8 +362,9 @@ const notifyStatusChange = async (order, status) => {
 export const OrderService = {
   /* ------------------------------- Customer ------------------------------- */
 
-  placeOrder: async ({ user_id, address_id, paymentMethod }) => {
+  placeOrder: async ({ user_id, store_id, address_id, paymentMethod }) => {
     const userId = toObjectId(user_id, "user_id");
+    const storeId = toObjectId(store_id, "store_id");
     const addressId = toObjectId(address_id, "address_id");
 
     const method = normalizeString(paymentMethod).toUpperCase() || "COD";
@@ -368,24 +372,35 @@ export const OrderService = {
       throw new AppError(400, "Unsupported payment method");
     }
 
-    // Same settings source as the cart, so cart total === order total.
     const settings = await getCartSettings("Product");
 
     const order = await runInTransaction(async (session) => {
-      const [address, cart] = await Promise.all([
+      const [store, address, cart] = await Promise.all([
+        Store.findOne({
+          _id: storeId,
+          status: "active",
+          verification_status: "verified",
+        })
+          .select("_id")
+          .session(session)
+          .lean()
+          .exec(),
         Address.findOne({ _id: addressId, user_id: userId })
           .session(session)
           .lean()
           .exec(),
-        Cart.findOne({ user_id: userId }).session(session).lean().exec(),
+        Cart.findOne({ user_id: userId, store_id: storeId })
+          .session(session)
+          .lean()
+          .exec(),
       ]);
 
+      if (!store) throw new AppError(404, "Store not available");
       if (!address) throw new AppError(404, "Address not found");
       if (!cart || cart.items.length === 0) {
         throw new AppError(400, "Cart is empty");
       }
 
-      // One line per product + variant combination.
       const lines = new Map();
       for (const item of cart.items) {
         const quantity = Number(item.quantity);
@@ -435,6 +450,13 @@ export const OrderService = {
           throw new AppError(
             409,
             "Some products in your cart are no longer available",
+          );
+        }
+
+        if (String(product.store_id) !== String(storeId)) {
+          throw new AppError(
+            409,
+            `"${product.name}" is not available in this store`,
           );
         }
 
@@ -508,6 +530,7 @@ export const OrderService = {
         [
           {
             user_id: userId,
+            store_id: storeId,
             items,
             shippingAddress: {
               address_id: address._id,
@@ -542,7 +565,7 @@ export const OrderService = {
       await PaymentService.createPendingPayment({ order: created, session });
 
       await Cart.updateOne(
-        { user_id: userId },
+        { user_id: userId, store_id: storeId },
         { $set: { items: [] } },
         { session },
       );
@@ -553,10 +576,12 @@ export const OrderService = {
     return mapOrder(order);
   },
 
-  listUserOrders: async ({ user_id, page, limit }) => {
+  listUserOrders: async ({ user_id, store_id, page, limit }) => {
     const userId = toObjectId(user_id, "user_id");
+    const storeId = toObjectId(store_id, "store_id");
+
     const { orders, pagination } = await findPaginated(
-      { user_id: userId },
+      { user_id: userId, store_id: storeId },
       parsePagination({ page, limit }),
       USER_LIST_FIELDS,
     );

@@ -7,7 +7,6 @@ const CartItemSchema = new mongoose.Schema(
       ref: "Product",
       required: true,
     },
-    // null for products without variants
     variant_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ProductVariant",
@@ -33,12 +32,18 @@ const CartSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      unique: true,
+    },
+    store_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Store",
+      required: true,
     },
     items: { type: [CartItemSchema], default: [] },
   },
   { timestamps: true, versionKey: false },
 );
+
+CartSchema.index({ user_id: 1, store_id: 1 }, { unique: true });
 
 const Cart = mongoose.model("Cart", CartSchema);
 export default Cart;

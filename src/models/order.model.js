@@ -80,6 +80,12 @@ const OrderSchema = new Schema(
       required: true,
       index: true,
     },
+    store_id: {
+      type: Schema.Types.ObjectId,
+      ref: "Store",
+      required: true,
+      index: true,
+    },
     items: { type: [OrderItemSchema], default: [] },
     shippingAddress: { type: ShippingAddressSchema, required: true },
     totalItems: { type: Number, required: true, min: 1 },
@@ -109,6 +115,8 @@ const OrderSchema = new Schema(
 );
 
 OrderSchema.index({ user_id: 1, createdAt: -1 });
+OrderSchema.index({ user_id: 1, store_id: 1, createdAt: -1 });
+OrderSchema.index({ store_id: 1, status: 1, createdAt: -1 });
 OrderSchema.index({ status: 1, createdAt: -1 });
 
 const Order = mongoose.model("Order", OrderSchema);

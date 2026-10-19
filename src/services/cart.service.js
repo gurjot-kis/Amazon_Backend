@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Cart from "../models/cart.model.js";
 import Product from "../models/product.model.js";
+import Store from "../models/store.model.js";
 import CartSettings from "../models/cart-settings.model.js";
 import ProductVariant from "../models/productVariant.model.js";
 import { AppError } from "../utils/AppError.js";
@@ -39,13 +40,32 @@ const parseQuantity = (value) => {
   return n;
 };
 
-const getMaxAllowedQty = async (productId, variantId) => {
+const assertActiveStore = async (storeId) => {
+  assertObjectId(storeId, "storeId");
+
+  const store = await Store.findOne({
+    _id: storeId,
+    status: "active",
+    verification_status: "verified",
+  })
+    .select("_id")
+    .lean();
+
+  if (!store) throw new AppError(404, "Store not available");
+};
+
+const getMaxAllowedQty = async (storeId, productId, variantId) => {
   const product = await Product.findById(productId)
-    .select("status stock stockStatus hasVariants")
+    .select("status stock stockStatus hasVariants store_id")
     .lean();
 
   if (!product || product.status !== "active") {
     throw new AppError(404, "Product not available");
+  }
+
+  // Product must belong to the active store
+  if (String(product.store_id) !== String(storeId)) {
+    throw new AppError(409, "Product does not belong to this store");
   }
 
   let stock;
@@ -84,7 +104,12 @@ const itemMatch = (productId, variantId) => ({
   variant_id: variantId ? new mongoose.Types.ObjectId(variantId) : null,
 });
 
-const summarize = (cart, productId, variantId) => {
+const cartFilter = (userId, storeId) => ({
+  user_id: userId,
+  store_id: new mongoose.Types.ObjectId(storeId),
+});
+
+const summarize = (cart, storeId, productId, variantId) => {
   const line = cart?.items.find(
     (i) =>
       String(i.product_id) === String(productId) &&
@@ -92,6 +117,7 @@ const summarize = (cart, productId, variantId) => {
   );
 
   return {
+    storeId,
     productId,
     variantId: variantId || null,
     quantity: line ? line.quantity : 0,
@@ -100,8 +126,26 @@ const summarize = (cart, productId, variantId) => {
 };
 
 export const CartService = {
-  getCart: async (userId) => {
+  getUserCarts: async (userId) => {
+    const carts = await Cart.find({ user_id: userId })
+      .populate("store_id", "store_name store_logo status")
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    return carts
+      .filter((c) => c.items.length > 0 && c.store_id)
+      .map((c) => ({
+        store: c.store_id,
+        totalItems: c.items.reduce((s, i) => s + i.quantity, 0),
+        updatedAt: c.updatedAt,
+      }));
+  },
+
+  getCart: async (userId, storeId) => {
+    await assertActiveStore(storeId);
+
     const emptyCart = {
+      storeId,
       items: [],
       totalItems: 0,
       subtotal: 0,
@@ -112,7 +156,7 @@ export const CartService = {
     };
 
     const [cart, settings] = await Promise.all([
-      Cart.findOne({ user_id: userId })
+      Cart.findOne(cartFilter(userId, storeId))
         .populate(
           "items.product_id",
           "name slug mainImage price sellingPrice currency",
@@ -136,7 +180,6 @@ export const CartService = {
       .map((i) => {
         const product = i.product_id;
         const variant = i.variant_id || null;
-        console.log("variant +++++++++++++++++", variant)
 
         const unitPrice = variant?.sellingPrice || product.sellingPrice;
 
@@ -185,6 +228,7 @@ export const CartService = {
     const grandTotal = subtotal + deliveryFee + handlingFee + smallCartFee;
 
     return {
+      storeId,
       items,
       totalItems: items.reduce((s, i) => s + i.quantity, 0),
       subtotal,
@@ -197,18 +241,20 @@ export const CartService = {
 
   addToCart: async ({
     userId,
+    storeId,
     productId,
     variantId = null,
     quantity = 1,
     _retry = true,
   }) => {
+    await assertActiveStore(storeId);
     assertObjectId(productId, "productId");
 
     if (variantId) assertObjectId(variantId, "variantId");
     quantity = parseQuantity(quantity);
     variantId = variantId || null;
 
-    const maxQty = await getMaxAllowedQty(productId, variantId);
+    const maxQty = await getMaxAllowedQty(storeId, productId, variantId);
 
     if (quantity > maxQty) {
       throw new AppError(
@@ -218,11 +264,12 @@ export const CartService = {
     }
 
     const match = itemMatch(productId, variantId);
+    const base = cartFilter(userId, storeId);
 
     // 1) Line exists and stays within limit -> atomic increment
     let cart = await Cart.findOneAndUpdate(
       {
-        user_id: userId,
+        ...base,
         items: {
           $elemMatch: { ...match, quantity: { $lte: maxQty - quantity } },
         },
@@ -230,11 +277,11 @@ export const CartService = {
       { $inc: { "items.$.quantity": quantity } },
       { new: true },
     );
-    if (cart) return summarize(cart, productId, variantId);
+    if (cart) return summarize(cart, storeId, productId, variantId);
 
     // 2) Line exists but increment would exceed limit
     const exists = await Cart.exists({
-      user_id: userId,
+      ...base,
       items: { $elemMatch: match },
     });
     if (exists) {
@@ -244,18 +291,19 @@ export const CartService = {
       );
     }
 
-    // 3) Line doesn't exist -> push (creates cart if needed)
+    // 3) Line doesn't exist -> push (creates this store's cart if needed)
     try {
       cart = await Cart.findOneAndUpdate(
-        { user_id: userId, items: { $not: { $elemMatch: match } } },
+        { ...base, items: { $not: { $elemMatch: match } } },
         { $push: { items: { ...match, quantity } } },
         { new: true, upsert: true },
       );
-      return summarize(cart, productId, variantId);
+      return summarize(cart, storeId, productId, variantId);
     } catch (err) {
       if (err.code === 11000 && _retry) {
         return CartService.addToCart({
           userId,
+          storeId,
           productId,
           variantId,
           quantity,
@@ -268,10 +316,12 @@ export const CartService = {
 
   decrementCartItem: async ({
     userId,
+    storeId,
     productId,
     variantId = null,
     quantity = 1,
   }) => {
+    await assertActiveStore(storeId);
     assertObjectId(productId, "productId");
 
     if (variantId) assertObjectId(variantId, "variantId");
@@ -279,22 +329,23 @@ export const CartService = {
     variantId = variantId || null;
 
     const match = itemMatch(productId, variantId);
+    const base = cartFilter(userId, storeId);
 
     // 1) Quantity remains above zero -> atomic decrement
     let cart = await Cart.findOneAndUpdate(
       {
-        user_id: userId,
+        ...base,
         items: { $elemMatch: { ...match, quantity: { $gt: quantity } } },
       },
       { $inc: { "items.$.quantity": -quantity } },
       { new: true },
     );
-    if (cart) return summarize(cart, productId, variantId);
+    if (cart) return summarize(cart, storeId, productId, variantId);
 
     // 2) Decrement would reach zero -> remove the line
     cart = await Cart.findOneAndUpdate(
       {
-        user_id: userId,
+        ...base,
         items: { $elemMatch: { ...match, quantity: { $lte: quantity } } },
       },
       { $pull: { items: match } },
@@ -302,14 +353,16 @@ export const CartService = {
     );
     if (!cart) throw new AppError(404, "Item not found in cart");
 
-    return summarize(cart, productId, variantId);
+    return summarize(cart, storeId, productId, variantId);
   },
 
-  clearCart: async (userId) => {
-    await Cart.updateOne({ user_id: userId }, { $set: { items: [] } });
+  clearCart: async (userId, storeId) => {
+    assertObjectId(storeId, "storeId");
+    await Cart.updateOne(cartFilter(userId, storeId), { $set: { items: [] } });
   },
 
-  removeCartItem: async ({ userId, productId, variantId }) => {
+  removeCartItem: async ({ userId, storeId, productId, variantId }) => {
+    assertObjectId(storeId, "storeId");
     assertObjectId(productId, "productId");
     if (variantId) assertObjectId(variantId, "variantId");
 
@@ -319,7 +372,7 @@ export const CartService = {
         : itemMatch(productId, variantId);
 
     const cart = await Cart.findOneAndUpdate(
-      { user_id: userId, items: { $elemMatch: match } },
+      { ...cartFilter(userId, storeId), items: { $elemMatch: match } },
       { $pull: { items: match } },
       { new: true },
     );
@@ -327,6 +380,7 @@ export const CartService = {
     if (!cart) throw new AppError(404, "Item not found in cart");
 
     return {
+      storeId,
       productId,
       variantId: variantId ?? null,
       quantity: 0,

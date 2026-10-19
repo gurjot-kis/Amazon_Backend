@@ -1,16 +1,23 @@
 import { sendSuccess } from "../../helpers/response.helper.js";
 import ProductService from "../../services/product.service.js";
+import { AppError } from "../../utils/AppError.js";
+
+const activeStoreId = (req) => {
+  const id = req.activeStoreId;
+  if (!id) throw new AppError(400, "No active store selected");
+  return id;
+};
 
 export const ProductController = {
   getProductsByCategoryId: async (req, res, next) => {
     try {
       const { categoryId } = req.params;
-      const {store_id, page, limit, search } = req.query;
+      const { page, limit, search } = req.query;
 
       const { data, pagination } = await ProductService.getProductsByCategoryId(
         {
           category_id: categoryId,
-          store_id,
+          store_id: activeStoreId(req),
           page,
           limit,
           search,

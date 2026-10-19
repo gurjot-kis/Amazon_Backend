@@ -21,6 +21,29 @@ export const StoreController = {
       next(error);
     }
   },
+
+  setActiveStore: async (req, res, next) => {
+    try {
+      const { user_id, store_id } = req.body;
+
+      if (!user_id) {
+        throw new Error("User ID is required");
+      }
+
+      if (!store_id) {
+        throw new Error("Store ID is required");
+      }
+
+      const data = await StoreService.setActiveStore(user_id, store_id);
+
+      return sendSuccess(res, {
+        message: "Active store updated successfully",
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
 };
 
 export default StoreController;

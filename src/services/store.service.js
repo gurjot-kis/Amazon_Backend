@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import Store from "../models/store.model.js";
 import { paginateAggregate } from "./pagination.service.js";
+import User from "../models/user.model.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_ROOT = path.join(__dirname, "../uploads");
@@ -36,7 +37,7 @@ const removeFile = (fileUrl) => {
   if (!fileUrl) return;
   const relative = fileUrl.replace(/^\/?uploads\//, "");
   const fullPath = path.resolve(UPLOADS_ROOT, relative);
-  if (!fullPath.startsWith(UPLOADS_ROOT)) return; 
+  if (!fullPath.startsWith(UPLOADS_ROOT)) return;
   fs.unlink(fullPath, () => {});
 };
 
@@ -59,7 +60,7 @@ const parseLocation = (latitude, longitude) => {
     throw new Error("Longitude must be between -180 and 180");
   }
 
-  return { type: "Point", coordinates: [lng, lat] }; 
+  return { type: "Point", coordinates: [lng, lat] };
 };
 
 const assertUniqueName = async (vendor_id, name, excludeId = null) => {
@@ -67,7 +68,7 @@ const assertUniqueName = async (vendor_id, name, excludeId = null) => {
   if (excludeId) query._id = { $ne: excludeId };
 
   const existing = await Store.findOne(query)
-    .collation({ locale: "en", strength: 2 }) 
+    .collation({ locale: "en", strength: 2 })
     .select("_id")
     .lean();
 
@@ -90,7 +91,6 @@ const normalizePagination = (page, limit) => ({
 
 const paginate = (pipeline, { page, limit } = {}) =>
   paginateAggregate(Store, pipeline, normalizePagination(page, limit));
-
 
 export const StoreService = {
   // ═════════════════════════ VENDOR ═════════════════════════
@@ -436,6 +436,47 @@ export const StoreService = {
       ],
       { page, limit },
     );
+  },
+
+  setActiveStore: async (userId, storeId) => {
+    assertObjectId(userId, "user ID");
+    assertObjectId(storeId, "store ID");
+
+    const user = await User.findById(userId).select("_id").lean();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const store = await Store.findOne({
+      _id: storeId,
+      status: "active",
+      verification_status: "verified",
+    })
+      .select("_id store_name")
+      .lean();
+
+    if (!store) {
+      throw new Error("Store not found or is not available");
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          active_store_id: store._id,
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
+    )
+      .select("_id user_id name active_store_id")
+      .populate("active_store_id", "store_name store_logo address city")
+      .lean();
+
+    return updatedUser;
   },
 };
 
