@@ -67,6 +67,7 @@ const buildAuthResponseData = (user, token) => {
     status: mapUserStatus(user.status),
     profilePicture: user.profilePicture || "",
     token,
+    store_id: user?.active_store_id ? String(user.active_store_id) : ""
   };
 };
 

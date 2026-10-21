@@ -101,6 +101,7 @@ export const AuthController = {
       return buildFailureResponse(res, authErrorStatus(message), message);
     }
   },
+  
   changePassword: async (req, res) => {
     try {
       const user_id = req.user?.user_id;
