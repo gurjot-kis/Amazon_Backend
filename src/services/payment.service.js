@@ -82,9 +82,11 @@ export const PaymentService = {
 
   // Throws (rolling back the cancellation) if money was already received.
   handleOrderCancellation: async ({ order_id, session }) => {
-    const paid = await Payment.exists({ order_id, status: "paid" }).session(
-      session,
-    );
+    const paid = await Payment.exists({
+      order_id,
+      status: "paid",
+      status: { $in: ["paid", "refund_pending"] },
+    }).session(session);
     if (paid) {
       throw new AppError(
         409,

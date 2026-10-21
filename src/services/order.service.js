@@ -13,26 +13,24 @@ import { getCartSettings } from "./cart.service.js";
 import { computeCartSummary } from "./cart-settings.service.js";
 import PaymentService from "./payment.service.js";
 
-/* -------------------------------------------------------------------------- */
-/*                                  Constants                                 */
-/* -------------------------------------------------------------------------- */
-
 const ORDER_STATUSES = [
+  "payment_pending",
   "placed",
   "confirmed",
   "shipped",
   "delivered",
   "cancelled",
 ];
-const USER_CANCELLABLE_STATUSES = ["placed", "confirmed"];
+const USER_CANCELLABLE_STATUSES = ["payment_pending", "placed", "confirmed"];
 const STATUS_TRANSITIONS = {
+  payment_pending: ["cancelled"],
   placed: ["confirmed", "cancelled"],
   confirmed: ["shipped", "cancelled"],
   shipped: ["delivered", "cancelled"],
   delivered: [],
   cancelled: [],
 };
-const ALLOWED_PAYMENT_METHODS = ["COD"];
+const ALLOWED_PAYMENT_METHODS = ["COD", "ONLINE"];
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
@@ -40,10 +38,10 @@ const PREVIEW_IMAGES = 4;
 
 const USER_LIST_FIELDS =
   "store_id status totalItems grandTotal paymentMethod paymentReceived createdAt items.name items.mainImage";
+
 /* -------------------------------------------------------------------------- */
 /*                                   Helpers                                  */
 /* -------------------------------------------------------------------------- */
-
 const normalizeString = (value) => String(value ?? "").trim();
 const idToString = (value) => (value == null ? null : String(value));
 const finiteOrNull = (value) =>
@@ -749,11 +747,17 @@ export const OrderService = {
 
   listVendorOrders: async ({ vendor_id, status, page, limit }) => {
     const vendorId = toObjectId(vendor_id, "vendor_id");
-    const filter = { "items.vendor_id": vendorId };
+    const filter = {
+      "items.vendor_id": vendorId,
+      status: { $ne: "payment_pending" },
+    };
 
     if (status) {
       const normalizedStatus = normalizeString(status).toLowerCase();
-      if (!ORDER_STATUSES.includes(normalizedStatus)) {
+      if (
+        !ORDER_STATUSES.includes(normalizedStatus) ||
+        normalizedStatus === "payment_pending"
+      ) {
         throw new AppError(400, "Invalid order status");
       }
       filter.status = normalizedStatus;
@@ -776,6 +780,7 @@ export const OrderService = {
     const order = await Order.findOne({
       _id: orderId,
       "items.vendor_id": vendorId,
+      status: { $ne: "payment_pending" },
     })
       .lean()
       .exec();

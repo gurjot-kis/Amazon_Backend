@@ -2,21 +2,32 @@ import mongoose from "mongoose";
 
 const { Schema } = mongoose;
 
-export const PAYMENT_METHODS = ["COD", "UPI", "CARD", "NETBANKING", "WALLET"];
+export const PAYMENT_METHODS = [
+  "COD",
+  "ONLINE",
+  "UPI",
+  "CARD",
+  "NETBANKING",
+  "WALLET",
+];
 export const PAYMENT_STATUSES = [
   "pending",
   "paid",
   "failed",
   "cancelled",
+  "refund_pending",
   "refunded",
 ];
 
-// Filled only for online payments (UPI/card/...) later.
 const GatewaySchema = new Schema(
   {
-    provider: { type: String, default: null, trim: true }, // e.g. "razorpay"
-    order_ref: { type: String, default: null, trim: true }, // gateway's order id
-    payment_ref: { type: String, default: null, trim: true }, // gateway's payment id
+    provider: { type: String, default: null, trim: true }, // "razorpay"
+    order_ref: { type: String, default: null, trim: true }, // razorpay order id
+    payment_ref: { type: String, default: null, trim: true }, // razorpay payment id
+    method: { type: String, default: null, trim: true }, // actual method used: upi/card/...
+    signature: { type: String, default: null, trim: true },
+    last_event_id: { type: String, default: null, trim: true }, // webhook dedupe
+    error_code: { type: String, default: null, trim: true },
   },
   { _id: false },
 );
@@ -46,11 +57,19 @@ const PaymentSchema = new Schema(
     },
     paid_at: { type: Date, default: null },
     cancelled_at: { type: Date, default: null },
-    // COD: the admin who confirmed cash receipt.
     collected_by: { type: Schema.Types.ObjectId, ref: "User", default: null },
     note: { type: String, default: "", trim: true, maxlength: 500 },
     failure_reason: { type: String, default: "", trim: true },
     gateway: { type: GatewaySchema, default: null },
+
+    // Online payments: the order is auto-cancelled if unpaid by this time.
+    expires_at: { type: Date, default: null },
+
+    // Refunds
+    refund_id: { type: String, default: null, trim: true },
+    refunded_amount: { type: Number, default: 0, min: 0 },
+    refunded_at: { type: Date, default: null },
+    refund_reason: { type: String, default: "", trim: true, maxlength: 500 },
   },
   { timestamps: true, versionKey: false },
 );
@@ -75,6 +94,19 @@ PaymentSchema.index(
     unique: true,
     partialFilterExpression: { "gateway.payment_ref": { $type: "string" } },
     name: "uniq_gateway_payment_ref",
+  },
+);
+
+// Used by the expiry job.
+PaymentSchema.index({ status: 1, expires_at: 1 });
+
+// One Payment per Razorpay order.
+PaymentSchema.index(
+  { "gateway.order_ref": 1 },
+  {
+    unique: true,
+    partialFilterExpression: { "gateway.order_ref": { $type: "string" } },
+    name: "uniq_gateway_order_ref",
   },
 );
 
