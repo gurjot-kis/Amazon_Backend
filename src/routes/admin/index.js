@@ -18,7 +18,7 @@ router.use("/variant-types", VariantTypeRoutes);
 router.use("/variant-options", VariantOptionRoutes);
 router.use("/cart-settings", CartSettingsRoutes);
 router.use("/banner", BannerRoutes);
-router.use("/order", OrderRoutes);
+router.use(OrderRoutes);
 router.use("/payment", PaymentRoutes);
 router.use("/vendors", VendorRoutes);
 router.use("/store", StoreRoutes);

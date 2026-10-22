@@ -8,6 +8,7 @@ import indexRoutes from "./routes/index.js";
 import AdminRoutes from "./routes/admin/index.js";
 import MobileRoutes from "./routes/mobile/index.js";
 import VendorRoutes from "./routes/vendor/index.js";
+import webhookRoutes from "./routes/webhook.routes.js"
 
 import { errorHandler } from "./middlewares/error.middleware.js";
 
@@ -15,6 +16,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+app.use("/api/webhooks", webhookRoutes);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

@@ -1,5 +1,6 @@
 import { sendSuccess, sendError } from "../../helpers/response.helper.js";
 import { OrderService } from "../../services/order.service.js";
+import { AppError } from "../../utils/AppError.js";
 
 const respondError = (res, err, fallbackMessage) => {
   if (err instanceof AppError) {
