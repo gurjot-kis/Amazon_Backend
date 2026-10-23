@@ -12,6 +12,7 @@ import { getCartSettings } from "./cart.service.js";
 import { computeCartSummary } from "./cart-settings.service.js";
 import PaymentService from "./payment.service.js";
 import { notifyStatusChange } from "./order-notification.service.js";
+import WalletService from "./wallet.service.js";
 
 const ORDER_STATUSES = [
   "payment_pending",
@@ -30,7 +31,7 @@ const STATUS_TRANSITIONS = {
   delivered: [],
   cancelled: [],
 };
-const ALLOWED_PAYMENT_METHODS = ["COD", "ONLINE"];
+const ALLOWED_PAYMENT_METHODS = ["COD", "ONLINE", "WALLET"];
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
@@ -482,11 +483,23 @@ export const OrderService = {
             delivery_waived: Boolean(summary.delivery_waived),
             small_cart_charge: summary.small_cart_charge || 0,
             paymentMethod: method,
+            paymentReceived: method === "WALLET" ? 1 : 0,
             status: method === "ONLINE" ? "payment_pending" : "placed",
           },
         ],
         { session },
       );
+
+      if (method === "WALLET") {
+        await WalletService.debit({
+          user_id: userId,
+          amount: Math.round(summary.grandTotal * 100), // rupees to paise
+          source: "order_payment",
+          reference: { type: "Order", id: created._id },
+          idempotency_key: `order:${created._id}`,
+          session,
+        });
+      }
 
       await PaymentService.createPendingPayment({ order: created, session });
 

@@ -6,6 +6,7 @@ import AddressController from "./address.controller.js";
 import OrderController from "./order.controller.js";
 import PaymentController from "./payment.controller.js";
 import StoreController from "./store.controller.js";
+import WalletController from "./wallet.controller.js";
 
 export {
   BannerController,
@@ -16,4 +17,5 @@ export {
   OrderController,
   PaymentController,
   StoreController,
+  WalletController,
 };
