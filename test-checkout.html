@@ -1,0 +1,15 @@
+<button id="pay">Pay</button>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+  const options = {
+    key: "rzp_test_TqVx9pMb638BJn",               // key_id from create-order response
+    amount: 16800,                      // amount_minor from the response
+    currency: "INR",
+    order_id: "order_TqwN7fr4VuHBlC",             // razorpay_order_id from the response
+    handler: function (response) {
+      console.log(JSON.stringify(response, null, 2));
+      alert("Copy the values from the browser console");
+    },
+  };
+  document.getElementById("pay").onclick = () => new Razorpay(options).open();
+</script>

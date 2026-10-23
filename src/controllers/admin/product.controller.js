@@ -1,77 +1,206 @@
-import { sendSuccess } from "../../helpers/response.helper.js";
-import ProductService from "../../services/product-new.service.js";
+// import {
+//   applyProductUploads,
+//   applyProductUploadsForUpdate,
+// } from "../../helpers/product-upload.helper.js";
+// import { sendSuccess } from "../../helpers/response.helper.js";
+// import Product from "../../models/product.model.js";
+// import ProductService from "../../services/product.service.js";
 
-const applyProductUploads = (body, files) => {
-  const next = { ...(body || {}) };
-  const mainImageFile = files?.mainImage?.[0];
-  const featuredImageFiles = files?.featuredImages || [];
+// export const ProductController = {
+//   createProduct: async (req, res, next) => {
+//     try {
+//       const body = applyProductUploads(req.body, req.files);
 
-  if (mainImageFile) {
-    next.mainImage = `/uploads/products/${mainImageFile.filename}`;
-  }
+//       const {
+//         name,
+//         description,
+//         short_description,
+//         category_id,
+//         sku,
+//         currency,
+//         costPrice,
+//         sellingPrice,
+//         price,
+//         stock,
+//         mainImage,
+//         featuredImages,
+//         hasVariants,
+//         variantTypes,
+//         variants,
+//         imageGroupTypeId,
+//       } = body;
 
-  const uploadedFeatured = featuredImageFiles.map(
-    (f) => `/uploads/products/${f.filename}`,
-  );
-  const existingFeatured = normalizeFeaturedImagesInput(next.featuredImages);
+//       const product = await ProductService.createProduct({
+//         name,
+//         description,
+//         short_description,
+//         category_id,
+//         sku,
+//         currency,
+//         costPrice,
+//         sellingPrice,
+//         price,
+//         stock,
+//         mainImage,
+//         featuredImages,
+//         user_id: req.user._id,
+//         role: req.user.role,
+//         hasVariants: hasVariants === "true" || hasVariants === true,
+//         variantTypes: variantTypes
+//           ? typeof variantTypes === "string"
+//             ? JSON.parse(variantTypes)
+//             : variantTypes
+//           : [],
+//         variants: variants
+//           ? typeof variants === "string"
+//             ? JSON.parse(variants)
+//             : variants
+//           : [],
+//         imageGroupTypeId,
+//       });
 
-  if (uploadedFeatured.length > 0) {
-    next.featuredImages = [...(existingFeatured || []), ...uploadedFeatured];
-  } else if (next.featuredImages !== undefined) {
-    const normalized = normalizeFeaturedImagesInput(next.featuredImages);
-    if (normalized === undefined) {
-      delete next.featuredImages;
-    } else {
-      next.featuredImages = normalized;
-    }
-  }
+//       return sendSuccess(res, {
+//         message: "Product created successfully",
+//         data: product,
+//       });
+//     } catch (error) {
+//       next(error);
+//     }
+//   },
 
-  return next;
-};
+//   getAllProducts: async (req, res, next) => {
+//     try {
+//       const { page, limit, search, category_id, status } = req.query;
 
-export const ProductController = {
-  createProduct: async (req, res, next) => {
-    try {
-      const body = applyProductUploads(req.body, req.files);
+//       const { data, pagination } = await ProductService.getAllProducts({
+//         page,
+//         limit,
+//         search,
+//         category_id,
+//         status,
+//       });
 
-      const {
-        name,
-        description,
-        short_description,
-        category_id,
-        sku,
-        currency,
-        costPrice,
-        sellingPrice,
-        price,
-        mainImage,
-        featuredImages,
-      } = body;
+//       return sendSuccess(res, {
+//         message: "Products fetched successfully",
+//         data,
+//         pagination,
+//       });
+//     } catch (error) {
+//       next(error);
+//     }
+//   },
 
-      const product = await ProductService.createProduct({
-        name,
-        description,
-        short_description,
-        category_id,
-        sku,
-        currency,
-        costPrice,
-        sellingPrice,
-        price,
-        mainImage,
-        featuredImages,
-        user_id: req.user._id,
-        role: req.user.role,
-      });
+//   getProductById: async (req, res, next) => {
+//     try {
+//       const { id } = req.params;
+//       const product = await ProductService.getProductById(id);
 
-      return sendSuccess(res, {
-        message: "Product created successfully",
-        data: product,
-      });
-    } catch (error) {
-      next(error);
-    }
-  },
-};
+//       return sendSuccess(res, {
+//         message: "Product fetched successfully",
+//         data: product,
+//       });
+//     } catch (error) {
+//       next(error);
+//     }
+//   },
 
-export default ProductController;
+//   updateProduct: async (req, res, next) => {
+//     try {
+//       const { id } = req.params;
+
+//       const existing = await Product.findById(id)
+//         .select("featuredImages mainImage")
+//         .lean();
+//       if (!existing) {
+//         return sendSuccess(res, { message: "Product not found" }, 404);
+//       }
+
+//       const body = applyProductUploadsForUpdate(req.body, req.files, existing);
+
+//       const {
+//         name,
+//         description,
+//         short_description,
+//         category_id,
+//         sku,
+//         currency,
+//         costPrice,
+//         sellingPrice,
+//         price,
+//         stock,
+//         mainImage,
+//         featuredImages,
+//         hasVariants,
+//         variantTypes,
+//         variants,
+//         imageGroupTypeId,
+//       } = body;
+
+//       const updated = await ProductService.updateProduct(id, {
+//         name,
+//         description,
+//         short_description,
+//         category_id,
+//         sku,
+//         currency,
+//         costPrice,
+//         sellingPrice,
+//         price,
+//         stock,
+//         mainImage,
+//         featuredImages,
+//         hasVariants: hasVariants === "true" || hasVariants === true,
+//         variantTypes: variantTypes
+//           ? typeof variantTypes === "string"
+//             ? JSON.parse(variantTypes)
+//             : variantTypes
+//           : [],
+//         variants: variants
+//           ? typeof variants === "string"
+//             ? JSON.parse(variants)
+//             : variants
+//           : [],
+//         imageGroupTypeId,
+//       });
+
+//       return sendSuccess(res, {
+//         message: "Product updated successfully",
+//         data: updated,
+//       });
+//     } catch (error) {
+//       next(error);
+//     }
+//   },
+
+//   updateProductStatus: async (req, res, next) => {
+//     try {
+//       const { id } = req.params;
+//       const { status } = req.body;
+
+//       if (!status) throw new Error("Status is required");
+
+//       const updated = await ProductService.updateProductStatus(id, status);
+//       return sendSuccess(res, {
+//         message: `Product status updated to ${updated.status} successfully`,
+//         data: updated,
+//       });
+//     } catch (error) {
+//       next(error);
+//     }
+//   },
+
+//   deleteProduct: async (req, res, next) => {
+//     try {
+//       const { id } = req.params;
+//       await ProductService.deleteProduct(id);
+//       return sendSuccess(res, {
+//         message: "Product deleted successfully",
+//         data: null,
+//       });
+//     } catch (error) {
+//       next(error);
+//     }
+//   },
+// };
+
+// export default ProductController;

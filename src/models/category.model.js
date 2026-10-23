@@ -12,6 +12,12 @@ const CategorySchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    category_type: {
+      type: String,
+      enum: ["quick_commerce", "standard_commerce"],
+      default: "standard_commerce",
+      required: true,
+    },
     description: {
       type: String,
       default: "",
@@ -50,6 +56,7 @@ const CategorySchema = new mongoose.Schema(
 );
 
 CategorySchema.index({ parent_id: 1, name: 1 }, { unique: true });
+CategorySchema.index({ category_type: 1 });
 CategorySchema.index({ parent_id: 1, display_order: 1 });
 CategorySchema.index({ status: 1, is_featured: 1 });
 

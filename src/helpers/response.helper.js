@@ -1,6 +1,12 @@
 export const sendSuccess = (
   res,
-  { code = 200, message = "Success", data = null, pagination = undefined } = {},
+  {
+    code = 200,
+    message = "Success",
+    data = null,
+    pagination = undefined,
+    maxLevel = undefined,
+  } = {},
 ) => {
   const response = {
     success: true,
@@ -11,6 +17,10 @@ export const sendSuccess = (
 
   if (pagination) {
     response.pagination = pagination;
+  }
+
+  if (maxLevel !== undefined) {
+    response.maxLevel = maxLevel;
   }
 
   return res.status(code).json(response);

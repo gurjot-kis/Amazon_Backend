@@ -1,17 +1,10 @@
 import mongoose from "mongoose";
-import crypto from "crypto";
 
 const AddressSchema = new mongoose.Schema(
   {
-    address_id: {
-      type: String,
-      required: true,
-      unique: true,
-      default: () => crypto.randomUUID(),
-      index: true,
-    },
     user_id: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
       required: true,
       index: true,
       trim: true,
@@ -68,7 +61,7 @@ const AddressSchema = new mongoose.Schema(
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const Address = mongoose.model("Address", AddressSchema);

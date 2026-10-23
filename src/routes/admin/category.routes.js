@@ -5,9 +5,11 @@ import { uploadCategoryImage } from "../../middlewares/upload.middleware.js";
 import { CategoryController } from "../../controllers/admin/index.js";
 
 const router = express.Router();
-router.use(authMiddleware, authorizeRoles(ROLES.SUPER_ADMIN));
+router.get("/leaf", CategoryController.getLeafCategories);
 
+router.use(authMiddleware, authorizeRoles(ROLES.SUPER_ADMIN));
 router.get("/list", CategoryController.getAllCategories);
+router.get("/active-list", CategoryController.getCategoriesSelectList)
 router.post("/create", uploadCategoryImage, CategoryController.createCategory);
 
 router.get("/:id", CategoryController.getCategoryById);

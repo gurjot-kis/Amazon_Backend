@@ -19,7 +19,6 @@ const buildFailureResponse = (res, code, message) => {
   });
 };
 
-/** Read phone from JSON body, urlencoded body, or query (Postman/clients often miss Content-Type). */
 const getPhoneFromRequest = (req) => {
   let body = req.body;
 
@@ -104,11 +103,16 @@ export const AuthController = {
       return buildFailureResponse(res, authErrorStatus(message), message);
     }
   },
+  
   changePassword: async (req, res) => {
     try {
       const user_id = req.user?.user_id;
       const { newPassword, confirmnewPassword } = req.body || {};
-      const data = await AuthService.changePassword({ user_id, newPassword, confirmnewPassword });
+      const data = await AuthService.changePassword({
+        user_id,
+        newPassword,
+        confirmnewPassword,
+      });
 
       return res.status(200).json({
         success: true,
@@ -140,7 +144,8 @@ export const AuthController = {
       });
     } catch (err) {
       const message = err?.message || "Failed to send OTP";
-      const statusCode = message === "No account found with this email" ? 404 : 400;
+      const statusCode =
+        message === "No account found with this email" ? 404 : 400;
       return buildFailureResponse(res, statusCode, message);
     }
   },
@@ -158,9 +163,11 @@ export const AuthController = {
     } catch (err) {
       const message = err?.message || "OTP verification failed";
       const statusCode =
-        message === "No account found with this email" ? 404
-        : message === "OTP has expired" ? 410
-        : 400;
+        message === "No account found with this email"
+          ? 404
+          : message === "OTP has expired"
+            ? 410
+            : 400;
       return buildFailureResponse(res, statusCode, message);
     }
   },
@@ -168,7 +175,11 @@ export const AuthController = {
   resetPassword: async (req, res) => {
     try {
       const { resetToken, newPassword, confirmPassword } = req.body || {};
-      const data = await AuthService.resetPassword({ resetToken, newPassword, confirmPassword });
+      const data = await AuthService.resetPassword({
+        resetToken,
+        newPassword,
+        confirmPassword,
+      });
       return res.status(200).json({
         success: true,
         code: 200,
@@ -177,7 +188,8 @@ export const AuthController = {
       });
     } catch (err) {
       const message = err?.message || "Password reset failed";
-      const statusCode = message === "Invalid or expired reset token" ? 400 : 400;
+      const statusCode =
+        message === "Invalid or expired reset token" ? 400 : 400;
       return buildFailureResponse(res, statusCode, message);
     }
   },
@@ -202,7 +214,11 @@ export const AuthController = {
   loginTwilioVerify: async (req, res) => {
     try {
       const { phone, password, otp } = req.body || {};
-      const data = await AuthService.loginTwilioVerify({ phone, password, otp });
+      const data = await AuthService.loginTwilioVerify({
+        phone,
+        password,
+        otp,
+      });
       return res.status(200).json({
         success: true,
         code: 200,
@@ -212,10 +228,75 @@ export const AuthController = {
     } catch (err) {
       const message = err?.message || "Login failed";
       const statusCode =
-        message === ACCOUNT_DEACTIVATED_MESSAGE ? 403
-        : message === "Invalid credentials" ? 401
-        : message === "OTP has expired" ? 410
-        : 400;
+        message === ACCOUNT_DEACTIVATED_MESSAGE
+          ? 403
+          : message === "Invalid credentials"
+            ? 401
+            : message === "OTP has expired"
+              ? 410
+              : 400;
+      return buildFailureResponse(res, statusCode, message);
+    }
+  },
+
+  loginTwilioOtp: async (req, res) => {
+    try {
+      const phone = getPhoneFromRequest(req);
+
+      if (!phone) {
+        return buildFailureResponse(
+          res,
+          400,
+          'phone is required. Send JSON: { "phone": "+919780007922" } with header Content-Type: application/json',
+        );
+      }
+
+      const data = await AuthService.loginTwilioOtp({ phone });
+      return res.status(200).json({
+        success: true,
+        code: 200,
+        message: data.is_new_user
+          ? "Account created and OTP sent to your phone"
+          : "OTP sent to your phone",
+        data,
+      });
+    } catch (err) {
+      const message = err?.message || "Failed to send OTP";
+      const statusCode = message === ACCOUNT_DEACTIVATED_MESSAGE ? 403 : 400;
+      return buildFailureResponse(res, statusCode, message);
+    }
+  },
+
+  loginTwilioOtpVerify: async (req, res) => {
+    try {
+      const phone = getPhoneFromRequest(req);
+      const otp = getOtpFromRequest(req);
+
+      if (!phone) {
+        return buildFailureResponse(
+          res,
+          400,
+          'phone is required. Send JSON: { "phone": "+919780007922", "otp": "123456" } with Content-Type: application/json',
+        );
+      }
+
+      const data = await AuthService.loginTwilioOtpVerify({ phone, otp });
+      return res.status(200).json({
+        success: true,
+        code: 200,
+        message: "Login successfully",
+        data,
+      });
+    } catch (err) {
+      const message = err?.message || "Login failed";
+      const statusCode =
+        message === ACCOUNT_DEACTIVATED_MESSAGE
+          ? 403
+          : message === "Invalid credentials"
+            ? 401
+            : message === "OTP has expired"
+              ? 410
+              : 400;
       return buildFailureResponse(res, statusCode, message);
     }
   },
@@ -307,4 +388,3 @@ export const AuthController = {
 };
 
 export default AuthController;
-

@@ -1,51 +1,49 @@
 import mongoose from "mongoose";
 
-const CartSchema = new mongoose.Schema(
+const CartItemSchema = new mongoose.Schema(
   {
-    user_id: {
-      type: String,
-      default: "",
-      index: true,
-      trim: true,
-    },
-    guest_id: {
-      type: String,
-      default: "",
-      index: true,
-      trim: true,
-    },
     product_id: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
       required: true,
-      index: true,
-      trim: true,
+    },
+    variant_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ProductVariant",
+      default: null,
     },
     quantity: {
       type: Number,
       required: true,
       min: 1,
       default: 1,
+      validate: {
+        validator: Number.isInteger,
+        message: "Quantity must be an integer",
+      },
     },
   },
-  { timestamps: true }
+  { _id: false },
 );
 
-CartSchema.index(
-  { user_id: 1, product_id: 1 },
+const CartSchema = new mongoose.Schema(
   {
-    unique: true,
-    partialFilterExpression: { user_id: { $gt: "" } },
-  }
+    user_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    store_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Store",
+      required: true,
+    },
+    items: { type: [CartItemSchema], default: [] },
+  },
+  { timestamps: true, versionKey: false },
 );
 
-CartSchema.index(
-  { guest_id: 1, product_id: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { guest_id: { $gt: "" } },
-  }
-);
+CartSchema.index({ user_id: 1, store_id: 1 }, { unique: true });
 
 const Cart = mongoose.model("Cart", CartSchema);
-
 export default Cart;

@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import crypto from "crypto";
 
 const ProductSchema = new mongoose.Schema(
   {
@@ -36,11 +35,10 @@ const ProductSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      unique: true,
+      uppercase: true,
     },
     slug: {
       type: String,
-      unique: true,
       trim: true,
       lowercase: true,
     },
@@ -76,28 +74,48 @@ const ProductSchema = new mongoose.Schema(
       enum: ["in_stock", "out_of_stock"],
       required: true,
       default: "in_stock",
-      index: true,
     },
     status: {
       type: String,
-      enum: ["pending", "active", "rejected"],
+      enum: ["pending", "active", "rejected", "inactive"],
       default: "pending",
-      index: true,
     },
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+    },
+    store_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Store",
+      required: true,
     },
     role: {
       type: String,
       enum: ["SuperAdmin", "User", "Vendor"],
       index: true,
     },
+
+    hasVariants: {
+      type: Boolean,
+      default: false,
+    },
+    variantTypes: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "VariantType",
+      },
+    ],
+
+    imageGroupTypeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "VariantType",
+      default: null,
+    },
   },
   { timestamps: true, versionKey: false },
 );
 
-ProductSchema.pre("save", function (next) {
+ProductSchema.pre("save", async function () {
   if (!this.slug && this.name) {
     this.slug = this.name
       .toLowerCase()
@@ -105,14 +123,14 @@ ProductSchema.pre("save", function (next) {
       .replace(/[^a-z0-9\s-]/g, "")
       .replace(/\s+/g, "-");
   }
-  next();
 });
 
 ProductSchema.index({ category_id: 1 });
 ProductSchema.index({ status: 1 });
-ProductSchema.index({ sku: 1 });
-ProductSchema.index({ slug: 1 });
+ProductSchema.index({ sku: 1 }, { unique: true });
+ProductSchema.index({ slug: 1 }, { unique: true });
 ProductSchema.index({ stockStatus: 1, status: 1 });
+ProductSchema.index({ hasVariants: 1 });
 
 const Product = mongoose.model("Product", ProductSchema);
 

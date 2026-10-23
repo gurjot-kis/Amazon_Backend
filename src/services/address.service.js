@@ -1,14 +1,23 @@
+import mongoose from "mongoose";
 import Address from "../models/address.model.js";
+
+const { Types } = mongoose;
 
 const normalizeString = (value) => String(value || "").trim();
 
-const normalizeId = (value) => normalizeString(value).replace(/^:/, "");
+const toObjectId = (value, fieldName = "user_id") => {
+  if (!value || !Types.ObjectId.isValid(value)) {
+    throw new Error(`${fieldName} must be a valid ObjectId`);
+  }
+  return new Types.ObjectId(value);
+};
 
 const parseOptionalLatitude = (value) => {
   if (value === undefined || value === null || value === "") {
     return null;
   }
-  const n = typeof value === "number" ? value : parseFloat(String(value).trim());
+  const n =
+    typeof value === "number" ? value : parseFloat(String(value).trim());
   if (!Number.isFinite(n) || n < -90 || n > 90) {
     throw new Error("latitude must be a number between -90 and 90");
   }
@@ -19,7 +28,8 @@ const parseOptionalLongitude = (value) => {
   if (value === undefined || value === null || value === "") {
     return null;
   }
-  const n = typeof value === "number" ? value : parseFloat(String(value).trim());
+  const n =
+    typeof value === "number" ? value : parseFloat(String(value).trim());
   if (!Number.isFinite(n) || n < -180 || n > 180) {
     throw new Error("longitude must be a number between -180 and 180");
   }
@@ -27,7 +37,7 @@ const parseOptionalLongitude = (value) => {
 };
 
 const mapAddress = (address) => ({
-  address_id: address.address_id,
+  _id: address._id,
   user_id: address.user_id,
   fullName: address.fullName,
   phone: address.phone,
@@ -40,46 +50,79 @@ const mapAddress = (address) => ({
   pincode: address.pincode,
   isDefault: Boolean(address.isDefault),
   latitude:
-    address.latitude != null && Number.isFinite(address.latitude) ? address.latitude : null,
+    address.latitude != null && Number.isFinite(address.latitude)
+      ? address.latitude
+      : null,
   longitude:
-    address.longitude != null && Number.isFinite(address.longitude) ? address.longitude : null,
+    address.longitude != null && Number.isFinite(address.longitude)
+      ? address.longitude
+      : null,
   createdAt: address.createdAt,
   updatedAt: address.updatedAt,
 });
 
 const setDefaultAddress = async (user_id, address_id) => {
   await Address.updateMany(
-    { user_id, address_id: { $ne: address_id }, isDefault: true },
-    { $set: { isDefault: false } }
+    { user_id, _id: { $ne: address_id }, isDefault: true },
+    { $set: { isDefault: false } },
   ).exec();
 };
 
-export const AddressService = {
-  setDefaultAddress: async ({ user_id, address_id }) => {
-    const normalizedUserId = normalizeId(user_id);
-    const normalizedAddressId = normalizeId(address_id);
+const requireFields = ({
+  fullName,
+  phone,
+  addressLine1,
+  city,
+  state,
+  country,
+  pincode,
+}) => {
+  if (
+    !fullName ||
+    !phone ||
+    !addressLine1 ||
+    !city ||
+    !state ||
+    !country ||
+    !pincode
+  ) {
+    throw new Error(
+      "fullName, phone, addressLine1, city, state, country and pincode are required",
+    );
+  }
+};
 
-    if (!normalizedUserId) {
+export const AddressService = {
+  listAddresses: async ({ user_id }) => {
+    const userId = toObjectId(user_id);
+    if (!userId) {
       throw new Error("user_id is required");
     }
-    if (!normalizedAddressId) {
-      throw new Error("address_id is required");
-    }
 
-    const target = await Address.findOne({
-      user_id: normalizedUserId,
-      address_id: normalizedAddressId,
-    }).exec();
+    const addresses = await Address.find({ user_id: userId })
+      .sort({ isDefault: -1, createdAt: -1 })
+      .lean()
+      .exec();
 
-    if (!target) {
+    return addresses.map(mapAddress);
+  },
+
+  getAddressById: async ({ user_id, address_id }) => {
+    const userId = toObjectId(user_id);
+    const addressId = toObjectId(address_id, "address_id");
+
+    const address = await Address.findOne({
+      _id: addressId,
+      user_id: userId,
+    })
+      .lean()
+      .exec();
+
+    if (!address) {
       throw new Error("Address not found");
     }
 
-    await Address.updateMany({ user_id: normalizedUserId }, { $set: { isDefault: false } }).exec();
-    target.isDefault = true;
-    await target.save();
-
-    return mapAddress(target);
+    return mapAddress(address);
   },
 
   addAddress: async ({
@@ -97,19 +140,19 @@ export const AddressService = {
     latitude,
     longitude,
   }) => {
-    const normalizedUserId = normalizeId(user_id);
-    if (!normalizedUserId) {
-      throw new Error("User id is required");
-    }
-
-    if (!fullName || !phone || !addressLine1 || !city || !state || !country || !pincode) {
-      throw new Error(
-        "fullName, phone, addressLine1, city, state, country and pincode are required"
-      );
-    }
+    const userId = toObjectId(user_id);
+    requireFields({
+      fullName,
+      phone,
+      addressLine1,
+      city,
+      state,
+      country,
+      pincode,
+    });
 
     const created = await Address.create({
-      user_id: normalizedUserId,
+      user_id: userId,
       fullName: normalizeString(fullName),
       phone: normalizeString(phone),
       addressLine1: normalizeString(addressLine1),
@@ -125,10 +168,33 @@ export const AddressService = {
     });
 
     if (created.isDefault) {
-      await setDefaultAddress(normalizedUserId, created.address_id);
+      await setDefaultAddress(userId, created._id);
     }
 
     return mapAddress(created);
+  },
+
+  setDefaultAddress: async ({ user_id, address_id }) => {
+    const userId = toObjectId(user_id);
+    const addressId = toObjectId(address_id, "address_id");
+
+    const target = await Address.findOne({
+      user_id: userId,
+      _id: addressId,
+    }).exec();
+
+    if (!target) {
+      throw new Error("Address not found");
+    }
+
+    await Address.updateMany(
+      { user_id: userId },
+      { $set: { isDefault: false } },
+    ).exec();
+    target.isDefault = true;
+    await target.save();
+
+    return mapAddress(target);
   },
 
   updateAddress: async ({
@@ -147,31 +213,27 @@ export const AddressService = {
     latitude,
     longitude,
   }) => {
-    const normalizedUserId = normalizeId(user_id);
-    const normalizedAddressId = normalizeId(address_id);
-
-    if (!normalizedUserId) {
-      throw new Error("user_id is required");
-    }
-
-    if (!normalizedAddressId) {
-      throw new Error("address_id is required");
-    }
+    const userId = toObjectId(user_id);
+    const addressId = toObjectId(address_id, "address_id");
 
     const address = await Address.findOne({
-      user_id: normalizedUserId,
-      address_id: normalizedAddressId,
+      user_id: userId,
+      _id: addressId,
     }).exec();
 
     if (!address) {
       throw new Error("Address not found");
     }
 
-    if (!fullName || !phone || !addressLine1 || !city || !state || !country || !pincode) {
-      throw new Error(
-        "fullName, phone, addressLine1, city, state, country and pincode are required"
-      );
-    }
+    requireFields({
+      fullName,
+      phone,
+      addressLine1,
+      city,
+      state,
+      country,
+      pincode,
+    });
 
     address.fullName = normalizeString(fullName);
     address.phone = normalizeString(phone);
@@ -194,36 +256,27 @@ export const AddressService = {
     await address.save();
 
     if (address.isDefault) {
-      await setDefaultAddress(normalizedUserId, normalizedAddressId);
+      await setDefaultAddress(userId, addressId);
     }
 
     return mapAddress(address);
   },
 
   deleteAddress: async ({ user_id, address_id }) => {
-    const normalizedUserId = normalizeId(user_id);
-    const normalizedAddressId = normalizeId(address_id);
-
-    if (!normalizedUserId) {
-      throw new Error("user_id is required");
-    }
-
-    if (!normalizedAddressId) {
-      throw new Error("address_id is required");
-    }
+    const userId = toObjectId(user_id);
+    const addressId = toObjectId(address_id, "address_id");
 
     const deleted = await Address.findOneAndDelete({
-      user_id: normalizedUserId,
-      address_id: normalizedAddressId,
+      _id: addressId,
+      user_id: userId,
     }).exec();
 
     if (!deleted) {
       throw new Error("Address not found");
     }
 
-    // If default address is deleted, assign newest address as default.
     if (deleted.isDefault) {
-      const nextDefault = await Address.findOne({ user_id: normalizedUserId })
+      const nextDefault = await Address.findOne({ user_id: userId })
         .sort({ createdAt: -1 })
         .exec();
       if (nextDefault) {
@@ -233,22 +286,8 @@ export const AddressService = {
     }
 
     return {
-      address_id: normalizedAddressId,
+      _id: addressId,
     };
-  },
-
-  listAddresses: async ({ user_id }) => {
-    const normalizedUserId = normalizeId(user_id);
-    if (!normalizedUserId) {
-      throw new Error("user_id is required");
-    }
-
-    const addresses = await Address.find({ user_id: normalizedUserId })
-      .sort({ isDefault: -1, createdAt: -1 })
-      .lean()
-      .exec();
-
-    return addresses.map(mapAddress);
   },
 };
 

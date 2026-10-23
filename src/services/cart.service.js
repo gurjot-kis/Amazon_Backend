@@ -1,345 +1,390 @@
-import crypto from "crypto";
+import mongoose from "mongoose";
 import Cart from "../models/cart.model.js";
 import Product from "../models/product.model.js";
-import {
-  getActiveCartSettings,
-  computeCartSummary,
-} from "./cart-settings.service.js";
+import Store from "../models/store.model.js";
+import CartSettings from "../models/cart-settings.model.js";
+import ProductVariant from "../models/productVariant.model.js";
+import { AppError } from "../utils/AppError.js";
 
-class InsufficientStockError extends Error {
-  constructor(available, requested) {
-    super(`Only ${available} unit(s) are available in stock`);
-    this.availableQuantity = available;
-    this.requestedQuantity = requested;
-    this.name = "InsufficientStockError";
+const MAX_QTY_PER_ITEM = 10;
+
+const DEFAULT_CART_SETTINGS = {
+  handling_charge: 10,
+  delivery_charge: 30,
+  free_delivery_min_amount: 150,
+  small_cart_charge: 0,
+  small_cart_max_amount: 0,
+};
+
+export const getCartSettings = async (type = "Product") => {
+  const settings = await CartSettings.findOne({
+    type,
+    status: "active",
+  }).lean();
+  return { ...DEFAULT_CART_SETTINGS, ...(settings || {}) };
+};
+
+const OBJECT_ID_REGEX = /^[a-f\d]{24}$/i;
+
+const assertObjectId = (value, name) => {
+  if (!OBJECT_ID_REGEX.test(String(value ?? ""))) {
+    throw new AppError(400, `${name} must be a valid ObjectId`);
   }
-}
-
-const normalizeId = (value) => String(value || "").trim().replace(/^:/, "");
+};
 
 const parseQuantity = (value) => {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new Error("quantity must be an integer greater than 0");
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new AppError(400, "quantity must be a positive integer");
   }
-  return parsed;
+  return n;
 };
 
-const getProductOrThrow = async (product_id) => {
-  const product = await Product.findOne({ product_id }).lean().exec();
-  if (!product) {
-    throw new Error("Product not found");
-  }
-  return product;
+const assertActiveStore = async (storeId) => {
+  assertObjectId(storeId, "storeId");
+
+  const store = await Store.findOne({
+    _id: storeId,
+    status: "active",
+    verification_status: "verified",
+  })
+    .select("_id")
+    .lean();
+
+  if (!store) throw new AppError(404, "Store not available");
 };
 
-/** Max units allowed in cart for this product (integer, >= 0). */
-const getAvailableStock = (product) => {
-  const raw = Number(product?.stock ?? 0);
-  if (!Number.isFinite(raw) || raw < 0) {
-    return 0;
+const getMaxAllowedQty = async (storeId, productId, variantId) => {
+  const product = await Product.findById(productId)
+    .select("status stock stockStatus hasVariants store_id")
+    .lean();
+
+  if (!product || product.status !== "active") {
+    throw new AppError(404, "Product not available");
   }
-  return Math.floor(raw);
+
+  // Product must belong to the active store
+  if (String(product.store_id) !== String(storeId)) {
+    throw new AppError(409, "Product does not belong to this store");
+  }
+
+  let stock;
+
+  if (product.hasVariants) {
+    if (!variantId)
+      throw new AppError(400, "Variant is required for this product");
+
+    const variant = await ProductVariant.findOne({
+      _id: variantId,
+      product_id: productId,
+    })
+      .select("status stock stockStatus")
+      .lean();
+
+    if (!variant || variant.status !== "active") {
+      throw new AppError(404, "Variant not available");
+    }
+    if (variant.stockStatus !== "in_stock" || variant.stock <= 0) {
+      throw new AppError(409, "Variant is out of stock");
+    }
+    stock = variant.stock;
+  } else {
+    if (variantId) throw new AppError(400, "This product has no variants");
+    if (product.stockStatus !== "in_stock" || product.stock <= 0) {
+      throw new AppError(409, "Product is out of stock");
+    }
+    stock = product.stock;
+  }
+
+  return Math.min(stock, MAX_QTY_PER_ITEM);
 };
 
-/**
- * Ensures desired cart line quantity does not exceed in-stock quantity.
- * @throws Error with user-facing message when over limit or out of stock
- */
-const assertQuantityWithinStock = (product, desiredQuantity) => {
-  const stock = getAvailableStock(product);
-  const desired = Number(desiredQuantity || 0);
+const itemMatch = (productId, variantId) => ({
+  product_id: new mongoose.Types.ObjectId(productId),
+  variant_id: variantId ? new mongoose.Types.ObjectId(variantId) : null,
+});
 
-  if (stock <= 0) {
-    throw new Error("This product is out of stock");
-  }
+const cartFilter = (userId, storeId) => ({
+  user_id: userId,
+  store_id: new mongoose.Types.ObjectId(storeId),
+});
 
-  if (desired > stock) {
-    throw new InsufficientStockError(stock, desired);
-  }
-};
-
-const mapCartItem = (item, product) => {
-  const safePrice = Number(product?.price || 0);
-  const safeSellingPrice = Number(product?.sellingPrice || 0);
-  const safeQuantity = Number(item.quantity || 0);
-  const itemTotal = safeSellingPrice * safeQuantity;
-  const priceTotal = safePrice * safeQuantity;
+const summarize = (cart, storeId, productId, variantId) => {
+  const line = cart?.items.find(
+    (i) =>
+      String(i.product_id) === String(productId) &&
+      String(i.variant_id || "") === String(variantId || ""),
+  );
 
   return {
-    product_id: item.product_id,
-    quantity: safeQuantity,
-    product: product
-      ? {
-          name: product.name,
-          slug: product.slug,
-          mainImage: product.mainImage,
-          currency: product.currency,
-          price: safePrice,
-          sellingPrice: safeSellingPrice,
-          stock: product.stock,
-          stockStatus: product.stockStatus,
-        }
-      : null,
-    itemTotal,
-    priceTotal,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
-  };
-};
-
-const addToCartByOwner = async ({ ownerField, ownerId, product_id, quantity }) => {
-  const normalizedOwnerId = normalizeId(ownerId);
-  const normalizedProductId = normalizeId(product_id);
-  const addQuantity = quantity === undefined ? 1 : parseQuantity(quantity);
-
-  if (!normalizedOwnerId) {
-    throw new Error(`${ownerField} is required`);
-  }
-
-  if (!normalizedProductId) {
-    throw new Error("product_id is required");
-  }
-
-  const product = await getProductOrThrow(normalizedProductId);
-
-  const ownerFilter = { [ownerField]: normalizedOwnerId, product_id: normalizedProductId };
-  const existing = await Cart.findOne(ownerFilter).exec();
-
-  const currentInCart = existing ? Number(existing.quantity || 0) : 0;
-  const desiredTotal = currentInCart + addQuantity;
-  assertQuantityWithinStock(product, desiredTotal);
-
-  if (existing) {
-    existing.quantity = desiredTotal;
-    await existing.save();
-    return mapCartItem(existing, product);
-  }
-
-  const cartItem = await Cart.create({
-    [ownerField]: normalizedOwnerId,
-    product_id: normalizedProductId,
-    quantity: addQuantity,
-  });
-
-  return mapCartItem(cartItem, product);
-};
-
-const listCartItemsByOwner = async ({ ownerField, ownerId }) => {
-  const normalizedOwnerId = normalizeId(ownerId);
-  if (!normalizedOwnerId) {
-    throw new Error(`${ownerField} is required`);
-  }
-
-  const ownerFilter = { [ownerField]: normalizedOwnerId };
-  const cartItems = await Cart.find(ownerFilter).sort({ createdAt: -1 }).lean().exec();
-  const settings = await getActiveCartSettings();
-
-  if (cartItems.length === 0) {
-    return {
-      items: [],
-      totalItems: 0,
-      summary: computeCartSummary([], settings),
-    };
-  }
-
-  const productIds = [...new Set(cartItems.map((item) => item.product_id).filter(Boolean))];
-  const products = await Product.find({ product_id: { $in: productIds } }).lean().exec();
-  const productMap = new Map(products.map((product) => [product.product_id, product]));
-
-  const items = cartItems.map((item) => mapCartItem(item, productMap.get(item.product_id)));
-  const totalItems = items.reduce((acc, item) => acc + item.quantity, 0);
-  const summary = computeCartSummary(items, settings);
-
-  return {
-    items,
-    totalItems,
-    summary,
+    storeId,
+    productId,
+    variantId: variantId || null,
+    quantity: line ? line.quantity : 0,
+    totalItems: cart ? cart.items.reduce((sum, i) => sum + i.quantity, 0) : 0,
   };
 };
 
 export const CartService = {
-  addToCart: async ({ user_id, product_id, quantity }) => {
-    const normalizedUserId = normalizeId(user_id);
-    if (!normalizedUserId) {
-      throw new Error("user_id is required");
-    }
+  getUserCarts: async (userId) => {
+    const carts = await Cart.find({ user_id: userId })
+      .populate("store_id", "store_name store_logo status")
+      .sort({ updatedAt: -1 })
+      .lean();
 
-    return addToCartByOwner({
-      ownerField: "user_id",
-      ownerId: normalizedUserId,
-      product_id,
-      quantity,
-    });
+    return carts
+      .filter((c) => c.items.length > 0 && c.store_id)
+      .map((c) => ({
+        store: c.store_id,
+        totalItems: c.items.reduce((s, i) => s + i.quantity, 0),
+        updatedAt: c.updatedAt,
+      }));
   },
 
-  addToGuestCart: async ({ guest_id, product_id, quantity }) => {
-    let normalizedGuestId = normalizeId(guest_id);
-    const guestCreated = !normalizedGuestId;
+  getCart: async (userId, storeId) => {
+    await assertActiveStore(storeId);
 
-    if (guestCreated) {
-      normalizedGuestId = crypto.randomUUID();
-    }
-
-    const item = await addToCartByOwner({
-      ownerField: "guest_id",
-      ownerId: normalizedGuestId,
-      product_id,
-      quantity,
-    });
-
-    return {
-      guest_id: normalizedGuestId,
-      guest_created: guestCreated,
-      ...item,
+    const emptyCart = {
+      storeId,
+      items: [],
+      totalItems: 0,
+      subtotal: 0,
+      deliveryFee: 0,
+      handlingFee: 0,
+      smallCartFee: 0,
+      grandTotal: 0,
     };
-  },
 
-  updateQuantity: async ({ user_id, product_id, quantity }) => {
-    const normalizedUserId = normalizeId(user_id);
-    const normalizedProductId = normalizeId(product_id);
-    const nextQuantity = parseQuantity(quantity);
-
-    if (!normalizedUserId) {
-      throw new Error("user_id is required");
-    }
-
-    if (!normalizedProductId) {
-      throw new Error("product_id is required");
-    }
-
-    const [cartItem, product] = await Promise.all([
-      Cart.findOne({
-        user_id: normalizedUserId,
-        product_id: normalizedProductId,
-      }).exec(),
-      getProductOrThrow(normalizedProductId),
+    const [cart, settings] = await Promise.all([
+      Cart.findOne(cartFilter(userId, storeId))
+        .populate(
+          "items.product_id",
+          "name slug mainImage price sellingPrice currency",
+        )
+        .populate({
+          path: "items.variant_id",
+          select: "sku price sellingPrice images combination",
+          populate: [
+            { path: "combination.variant_type_id", select: "name" },
+            { path: "combination.variant_option_id", select: "value label" },
+          ],
+        })
+        .lean(),
+      getCartSettings("Product"),
     ]);
 
-    if (!cartItem) {
-      throw new Error("Cart item not found");
-    }
+    if (!cart) return emptyCart;
 
-    assertQuantityWithinStock(product, nextQuantity);
+    const items = cart.items
+      .filter((i) => i.product_id)
+      .map((i) => {
+        const product = i.product_id;
+        const variant = i.variant_id || null;
 
-    cartItem.quantity = nextQuantity;
-    await cartItem.save();
+        const unitPrice = variant?.sellingPrice || product.sellingPrice;
 
-    return mapCartItem(cartItem, product);
-  },
+        return {
+          productId: product._id,
+          variantId: variant?._id || null,
+          name: product.name,
+          slug: product.slug,
+          image: variant?.images?.[0] || product.mainImage,
+          currency: product.currency,
+          unitPrice,
+          quantity: i.quantity,
+          lineTotal: unitPrice * i.quantity,
+          variant: variant
+            ? {
+                sku: variant.sku || null,
+                options: (variant.combination || []).map((c) => ({
+                  type: c.variant_type_id?.name || null,
+                  value:
+                    c.variant_option_id?.label ||
+                    c.variant_option_id?.value ||
+                    null,
+                })),
+              }
+            : null,
+        };
+      });
 
-  deleteCartItem: async ({ user_id, product_id }) => {
-    const normalizedUserId = normalizeId(user_id);
-    const normalizedProductId = normalizeId(product_id);
+    if (items.length === 0) return emptyCart;
 
-    if (!normalizedUserId) {
-      throw new Error("user_id is required");
-    }
+    const subtotal = items.reduce((s, i) => s + i.lineTotal, 0);
 
-    if (!normalizedProductId) {
-      throw new Error("product_id is required");
-    }
+    const deliveryFee =
+      subtotal >= settings.free_delivery_min_amount
+        ? 0
+        : settings.delivery_charge;
 
-    const deleted = await Cart.findOneAndDelete({
-      user_id: normalizedUserId,
-      product_id: normalizedProductId,
-    }).exec();
+    const handlingFee = settings.handling_charge;
 
-    if (!deleted) {
-      throw new Error("Cart item not found");
-    }
+    const smallCartFee =
+      settings.small_cart_charge > 0 &&
+      subtotal < settings.small_cart_max_amount
+        ? settings.small_cart_charge
+        : 0;
+
+    const grandTotal = subtotal + deliveryFee + handlingFee + smallCartFee;
 
     return {
-      product_id: normalizedProductId,
+      storeId,
+      items,
+      totalItems: items.reduce((s, i) => s + i.quantity, 0),
+      subtotal,
+      deliveryFee,
+      handlingFee,
+      smallCartFee,
+      grandTotal,
     };
   },
 
-  listCartItems: async ({ user_id }) => {
-    const normalizedUserId = normalizeId(user_id);
-    if (!normalizedUserId) {
-      throw new Error("user_id is required");
+  addToCart: async ({
+    userId,
+    storeId,
+    productId,
+    variantId = null,
+    quantity = 1,
+    _retry = true,
+  }) => {
+    await assertActiveStore(storeId);
+    assertObjectId(productId, "productId");
+
+    if (variantId) assertObjectId(variantId, "variantId");
+    quantity = parseQuantity(quantity);
+    variantId = variantId || null;
+
+    const maxQty = await getMaxAllowedQty(storeId, productId, variantId);
+
+    if (quantity > maxQty) {
+      throw new AppError(
+        409,
+        `Only ${maxQty} unit(s) can be added for this item`,
+      );
     }
 
-    return listCartItemsByOwner({ ownerField: "user_id", ownerId: normalizedUserId });
-  },
+    const match = itemMatch(productId, variantId);
+    const base = cartFilter(userId, storeId);
 
-  listGuestCartItems: async ({ guest_id }) => {
-    const normalizedGuestId = normalizeId(guest_id);
-    if (!normalizedGuestId) {
-      throw new Error("guest_id is required");
-    }
+    // 1) Line exists and stays within limit -> atomic increment
+    let cart = await Cart.findOneAndUpdate(
+      {
+        ...base,
+        items: {
+          $elemMatch: { ...match, quantity: { $lte: maxQty - quantity } },
+        },
+      },
+      { $inc: { "items.$.quantity": quantity } },
+      { new: true },
+    );
+    if (cart) return summarize(cart, storeId, productId, variantId);
 
-    const cart = await listCartItemsByOwner({
-      ownerField: "guest_id",
-      ownerId: normalizedGuestId,
+    // 2) Line exists but increment would exceed limit
+    const exists = await Cart.exists({
+      ...base,
+      items: { $elemMatch: match },
     });
+    if (exists) {
+      throw new AppError(
+        409,
+        `Cart limit reached. Max ${maxQty} unit(s) allowed for this item`,
+      );
+    }
 
-    return {
-      guest_id: normalizedGuestId,
-      ...cart,
-    };
+    // 3) Line doesn't exist -> push (creates this store's cart if needed)
+    try {
+      cart = await Cart.findOneAndUpdate(
+        { ...base, items: { $not: { $elemMatch: match } } },
+        { $push: { items: { ...match, quantity } } },
+        { new: true, upsert: true },
+      );
+      return summarize(cart, storeId, productId, variantId);
+    } catch (err) {
+      if (err.code === 11000 && _retry) {
+        return CartService.addToCart({
+          userId,
+          storeId,
+          productId,
+          variantId,
+          quantity,
+          _retry: false,
+        });
+      }
+      throw err;
+    }
   },
 
-  updateGuestQuantity: async ({ guest_id, product_id, quantity }) => {
-    const normalizedGuestId = normalizeId(guest_id);
-    const normalizedProductId = normalizeId(product_id);
-    const nextQuantity = parseQuantity(quantity);
+  decrementCartItem: async ({
+    userId,
+    storeId,
+    productId,
+    variantId = null,
+    quantity = 1,
+  }) => {
+    await assertActiveStore(storeId);
+    assertObjectId(productId, "productId");
 
-    if (!normalizedGuestId) {
-      throw new Error("guest_id is required");
-    }
+    if (variantId) assertObjectId(variantId, "variantId");
+    quantity = parseQuantity(quantity);
+    variantId = variantId || null;
 
-    if (!normalizedProductId) {
-      throw new Error("product_id is required");
-    }
+    const match = itemMatch(productId, variantId);
+    const base = cartFilter(userId, storeId);
 
-    const [cartItem, product] = await Promise.all([
-      Cart.findOne({
-        guest_id: normalizedGuestId,
-        product_id: normalizedProductId,
-      }).exec(),
-      getProductOrThrow(normalizedProductId),
-    ]);
+    // 1) Quantity remains above zero -> atomic decrement
+    let cart = await Cart.findOneAndUpdate(
+      {
+        ...base,
+        items: { $elemMatch: { ...match, quantity: { $gt: quantity } } },
+      },
+      { $inc: { "items.$.quantity": -quantity } },
+      { new: true },
+    );
+    if (cart) return summarize(cart, storeId, productId, variantId);
 
-    if (!cartItem) {
-      throw new Error("Cart item not found");
-    }
+    // 2) Decrement would reach zero -> remove the line
+    cart = await Cart.findOneAndUpdate(
+      {
+        ...base,
+        items: { $elemMatch: { ...match, quantity: { $lte: quantity } } },
+      },
+      { $pull: { items: match } },
+      { new: true },
+    );
+    if (!cart) throw new AppError(404, "Item not found in cart");
 
-    assertQuantityWithinStock(product, nextQuantity);
-
-    cartItem.quantity = nextQuantity;
-    await cartItem.save();
-
-    return {
-      guest_id: normalizedGuestId,
-      ...mapCartItem(cartItem, product),
-    };
+    return summarize(cart, storeId, productId, variantId);
   },
 
-  deleteGuestCartItem: async ({ guest_id, product_id }) => {
-    const normalizedGuestId = normalizeId(guest_id);
-    const normalizedProductId = normalizeId(product_id);
+  clearCart: async (userId, storeId) => {
+    assertObjectId(storeId, "storeId");
+    await Cart.updateOne(cartFilter(userId, storeId), { $set: { items: [] } });
+  },
 
-    if (!normalizedGuestId) {
-      throw new Error("guest_id is required");
-    }
+  removeCartItem: async ({ userId, storeId, productId, variantId }) => {
+    assertObjectId(storeId, "storeId");
+    assertObjectId(productId, "productId");
+    if (variantId) assertObjectId(variantId, "variantId");
 
-    if (!normalizedProductId) {
-      throw new Error("product_id is required");
-    }
+    const match =
+      variantId === undefined
+        ? { product_id: new mongoose.Types.ObjectId(productId) }
+        : itemMatch(productId, variantId);
 
-    const deleted = await Cart.findOneAndDelete({
-      guest_id: normalizedGuestId,
-      product_id: normalizedProductId,
-    }).exec();
+    const cart = await Cart.findOneAndUpdate(
+      { ...cartFilter(userId, storeId), items: { $elemMatch: match } },
+      { $pull: { items: match } },
+      { new: true },
+    );
 
-    if (!deleted) {
-      throw new Error("Cart item not found");
-    }
+    if (!cart) throw new AppError(404, "Item not found in cart");
 
     return {
-      guest_id: normalizedGuestId,
-      product_id: normalizedProductId,
+      storeId,
+      productId,
+      variantId: variantId ?? null,
+      quantity: 0,
+      totalItems: cart.items.reduce((sum, i) => sum + i.quantity, 0),
     };
   },
 };

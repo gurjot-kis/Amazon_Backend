@@ -4,12 +4,13 @@ import { sendSuccess } from "../../helpers/response.helper.js";
 export const CategoryController = {
   createCategory: async (req, res, next) => {
     try {
-      const { name, description, parent_id } = req.body;
+      const { name, category_type, description, parent_id } = req.body;
       const category_image = req.file
         ? `/uploads/categories/${req.file.filename}`
         : "";
       const category = await CategoryService.createCategory({
         name,
+        category_type,
         description,
         parent_id: parent_id || null,
         category_image,
@@ -27,21 +28,48 @@ export const CategoryController = {
 
   getAllCategories: async (req, res, next) => {
     try {
-      const { page, limit, search, status, level } = req.query;
+      const { page, limit, search, status, level, category_type } = req.query;
 
-      const { data, pagination } =
+      const { data, pagination, maxLevel } =
         await CategoryService.getAllCategoriesForAdmin({
           page,
           limit,
           search,
           filter_status: status,
           filter_level: level,
+          filter_type: category_type,
         });
 
       return sendSuccess(res, {
         message: "Categories fetched successfully",
         data,
         pagination,
+        maxLevel,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  getLeafCategories: async (req, res, next) => {
+    try {
+      const { search } = req.query;
+      const categories = await CategoryService.getLeafCategories({ search });
+      return sendSuccess(res, {
+        message: "Leaf categories fetched successfully",
+        data: categories,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  getCategoriesSelectList: async (req, res, next) => {
+    try {
+      const categories = await CategoryService.getAllCategoriesSelectList();
+      return sendSuccess(res, {
+        message: "Categories fetched successfully",
+        data: categories,
       });
     } catch (error) {
       next(error);
@@ -64,13 +92,14 @@ export const CategoryController = {
   updateCategory: async (req, res, next) => {
     try {
       const { id } = req.params;
-      const { name, description, parent_id, is_featured, metadata } = req.body;
+      const { name, category_type, description, parent_id, is_featured, metadata } = req.body;
       const category_image = req.file
         ? `/uploads/categories/${req.file.filename}`
         : "";
 
       const updated = await CategoryService.updateCategory(id, {
         name,
+        category_type,
         description,
         category_image,
         parent_id,

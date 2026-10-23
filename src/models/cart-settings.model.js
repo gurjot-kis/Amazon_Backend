@@ -40,19 +40,28 @@ const CartSettingsSchema = new mongoose.Schema(
       default: 0,
     },
     user_id: {
-      type: String,
-      trim: true,
-      default: "",
-      index: true,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
     role: {
       type: String,
       trim: true,
-      default: "",
+      default: "SuperAdmin",
+      index: true,
+    },
+    type: {
+      type: String,
+      default: undefined,
+    },
+
+    status: {
+      type: String,
+      enum: ["active", "inactive"],
+      default: "active",
       index: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const CartSettings = mongoose.model("CartSettings", CartSettingsSchema);
