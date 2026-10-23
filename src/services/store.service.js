@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import Store from "../models/store.model.js";
 import { paginateAggregate } from "./pagination.service.js";
 import User from "../models/user.model.js";
+import Address from "../models/address.model.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_ROOT = path.join(__dirname, "../uploads");
@@ -477,6 +478,31 @@ export const StoreService = {
       .lean();
 
     return updatedUser;
+  },
+
+  getStoreAndUserAddress: async (userId, storeId) => {
+    assertObjectId(userId, "user ID");
+    assertObjectId(storeId, "store ID");
+
+    const store_details = await Store.findById(storeId)
+      .select(
+        "store_name store_description store_logo store_banner address state city location",
+      )
+      .lean();
+
+    if (!store_details) {
+      throw new Error("Store not found");
+    }
+
+    const user_address = await Address.find({
+      user_id: userId,
+      isDefault: true,
+    }).lean();
+
+    return {
+      store_details,
+      user_address,
+    };
   },
 };
 

@@ -44,6 +44,30 @@ export const StoreController = {
       next(error);
     }
   },
+
+  getStoreAndUserAddress: async (req, res, next) => {
+    try {
+      const { storeid } = req.params;
+      const userId = req.user?._id;
+
+      if (!userId) {
+        throw new Error("Unauthorized: User ID not found");
+      }
+
+      if (!storeid) {
+        throw new Error("Store ID parameter is required");
+      }
+
+      const data = await StoreService.getStoreAndUserAddress(userId, storeid);
+
+      return sendSuccess(res, {
+        message: "Store details and user address fetched successfully",
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
 };
 
 export default StoreController;
