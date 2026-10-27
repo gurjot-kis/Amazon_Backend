@@ -1,9 +1,10 @@
 import jwt from "jsonwebtoken";
 import { isBlacklisted } from "../utils/token-blacklist.js";
+import User from "../models/user.model.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
-export const authMiddleware = (req, res, next) => {
+export const authMiddleware = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization || "";
     const [scheme, token] = authHeader.split(" ");
@@ -27,11 +28,34 @@ export const authMiddleware = (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, JWT_SECRET);
+
+    const user = await User.findById(decoded._id)
+      .select("_id user_id email role status isDeleted")
+      .lean();
+
+    if (!user || user.isDeleted) {
+      return res.status(401).json({
+        success: false,
+        code: 401,
+        message: "Unauthorized: account not found or has been deleted",
+        data: null,
+      });
+    }
+
+    if (user.status === 0) {
+      return res.status(401).json({
+        success: false,
+        code: 401,
+        message: "Unauthorized: account is deactivated",
+        data: null,
+      });
+    }
+
     req.user = {
-      _id: decoded._id,
-      user_id: decoded.user_id,
-      email: decoded.email,
-      role: decoded.role || "User",
+      _id: user._id,
+      user_id: user.user_id,
+      email: user.email,
+      role: user.role,
     };
 
     return next();

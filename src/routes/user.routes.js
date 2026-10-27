@@ -10,42 +10,32 @@ const router = express.Router();
 router.get(
   "/users/chat-search",
   authMiddleware,
-  ChatUserController.getAllUsers
+  ChatUserController.getAllUsers,
 );
 
 router.get(
   "/users/conversation-search",
   authMiddleware,
-  ChatUserController.getConversationUsers
+  ChatUserController.getConversationUsers,
 );
 
-router.post(
-  "/users/register",
-  ChatUserController.register
-);
+router.post("/users/register", ChatUserController.register);
 
-router.post(
-  "/users/login",
-  ChatUserController.login
-);
+router.post("/users/login", ChatUserController.login);
 
 router.get(
   "/users/profile-details",
   authMiddleware,
-  ChatUserController.getUserProfile
+  ChatUserController.getUserProfile,
 );
 
 router.post(
   "/users/upload-avatar",
   uploadMedia.single("file"),
-  ChatUserController.uploadAvatarFile
+  ChatUserController.uploadAvatarFile,
 );
 
-router.put(
-  "/users/profile",
-  authMiddleware,
-  ChatUserController.updateProfile
-);
+router.put("/users/profile", authMiddleware, ChatUserController.updateProfile);
 
 /**
  * User status: 1 = Active, 0 = Inactive
@@ -56,55 +46,58 @@ router.patch(
   "/user/location",
   authMiddleware,
   authorizeRoles(ROLES.USER),
-  UserController.updateUserLocation
+  UserController.updateUserLocation,
 );
 
 router.get(
   "/users",
   authMiddleware,
   authorizeRoles(ROLES.SUPER_ADMIN),
-  UserController.getUsers
+  UserController.getUsers,
 );
 
-router.get(
-  "/users/superadmins",
-  authMiddleware,
-  UserController.getSuperadmins
-);
+router.get("/users/superadmins", authMiddleware, UserController.getSuperadmins);
 
 router.post(
   "/users",
   authMiddleware,
   authorizeRoles(ROLES.SUPER_ADMIN),
-  UserController.addUser
+  UserController.addUser,
 );
 
 router.get(
   "/users/:user_id",
   authMiddleware,
   authorizeRoles(ROLES.SUPER_ADMIN),
-  UserController.getUserById
+  UserController.getUserById,
 );
 
 router.put(
   "/users/:user_id",
   authMiddleware,
   authorizeRoles(ROLES.SUPER_ADMIN),
-  UserController.updateUser
+  UserController.updateUser,
 );
 
 router.patch(
   "/users/:user_id",
   authMiddleware,
   authorizeRoles(ROLES.SUPER_ADMIN),
-  UserController.editUser
+  UserController.editUser,
 );
 
 router.delete(
   "/users/:user_id",
   authMiddleware,
   authorizeRoles(ROLES.SUPER_ADMIN),
-  UserController.deleteUser
+  UserController.deleteUser,
+);
+
+router.delete(
+  "/user/me",
+  authMiddleware,
+  authorizeRoles(ROLES.USER),
+  UserController.deleteMyAccount,
 );
 
 export default router;

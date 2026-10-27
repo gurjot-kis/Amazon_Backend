@@ -61,6 +61,8 @@ const UserSchema = new mongoose.Schema(
     loginTwilioOtp: { type: String, default: null },
     loginTwilioOtpExpiry: { type: Date, default: null },
     isVendorVerified: { type: Boolean },
+    deletedAt: { type: Date, default: null },
+    isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true },
 );

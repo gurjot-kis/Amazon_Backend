@@ -2,12 +2,16 @@ import bcrypt from "bcryptjs";
 import User from "../models/user.model.js";
 import Cart from "../models/cart.model.js";
 import Address from "../models/address.model.js";
+import Wishlist from "../models/wishlist.model.js";
 import Order from "../models/order.model.js";
 import { mapUserStatus, parseUserStatus } from "../utils/user-status.js";
 
 const normalizeName = (value) => String(value).trim();
 const normalizeEmail = (value) => String(value).trim().toLowerCase();
-const normalizeUserId = (value) => String(value ?? "").trim().replace(/^:/, "");
+const normalizeUserId = (value) =>
+  String(value ?? "")
+    .trim()
+    .replace(/^:/, "");
 
 const buildUserResponse = (user) => ({
   user_id: user.user_id,
@@ -15,8 +19,14 @@ const buildUserResponse = (user) => ({
   email: user.email,
   phone: user.phone || "",
   address: user.address || "",
-  latitude: user.latitude != null && Number.isFinite(user.latitude) ? user.latitude : null,
-  longitude: user.longitude != null && Number.isFinite(user.longitude) ? user.longitude : null,
+  latitude:
+    user.latitude != null && Number.isFinite(user.latitude)
+      ? user.latitude
+      : null,
+  longitude:
+    user.longitude != null && Number.isFinite(user.longitude)
+      ? user.longitude
+      : null,
   status: mapUserStatus(user.status),
 });
 
@@ -24,7 +34,8 @@ const parseLatitude = (value) => {
   if (value === undefined || value === null || value === "") {
     throw new Error("latitude is required");
   }
-  const n = typeof value === "number" ? value : parseFloat(String(value).trim(), 10);
+  const n =
+    typeof value === "number" ? value : parseFloat(String(value).trim(), 10);
   if (!Number.isFinite(n) || n < -90 || n > 90) {
     throw new Error("latitude must be a number between -90 and 90");
   }
@@ -35,7 +46,8 @@ const parseLongitude = (value) => {
   if (value === undefined || value === null || value === "") {
     throw new Error("longitude is required");
   }
-  const n = typeof value === "number" ? value : parseFloat(String(value).trim(), 10);
+  const n =
+    typeof value === "number" ? value : parseFloat(String(value).trim(), 10);
   if (!Number.isFinite(n) || n < -180 || n > 180) {
     throw new Error("longitude must be a number between -180 and 180");
   }
@@ -55,7 +67,11 @@ export const UserService = {
       filter.$or = [{ name: regex }, { email: regex }];
     }
 
-    if (status !== undefined && status !== null && String(status).trim() !== "") {
+    if (
+      status !== undefined &&
+      status !== null &&
+      String(status).trim() !== ""
+    ) {
       filter.status = parseUserStatus(status);
     }
 
@@ -64,7 +80,9 @@ export const UserService = {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parsedLimit)
-        .select("user_id name email phone address latitude longitude status -_id")
+        .select(
+          "user_id name email phone address latitude longitude status -_id",
+        )
         .lean()
         .exec(),
       User.countDocuments(filter),
@@ -76,8 +94,12 @@ export const UserService = {
       email: u.email,
       phone: u.phone || "",
       address: u.address || "",
-      latitude: u.latitude != null && Number.isFinite(u.latitude) ? u.latitude : null,
-      longitude: u.longitude != null && Number.isFinite(u.longitude) ? u.longitude : null,
+      latitude:
+        u.latitude != null && Number.isFinite(u.latitude) ? u.latitude : null,
+      longitude:
+        u.longitude != null && Number.isFinite(u.longitude)
+          ? u.longitude
+          : null,
       status: mapUserStatus(u.status),
     }));
 
@@ -99,7 +121,10 @@ export const UserService = {
       throw new Error("user_id is required");
     }
 
-    const user = await User.findOne({ user_id: String(user_id).trim(), role: "User" })
+    const user = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "User",
+    })
       .select("user_id name email phone address latitude longitude status -_id")
       .lean()
       .exec();
@@ -140,7 +165,15 @@ export const UserService = {
   },
 
   // PUT — replace all updatable fields (password optional)
-  updateUser: async ({ user_id, fullName, email, password, phone, address, status }) => {
+  updateUser: async ({
+    user_id,
+    fullName,
+    email,
+    password,
+    phone,
+    address,
+    status,
+  }) => {
     if (!user_id) {
       throw new Error("user_id is required");
     }
@@ -149,7 +182,10 @@ export const UserService = {
       throw new Error("fullName and email are required");
     }
 
-    const user = await User.findOne({ user_id: String(user_id).trim(), role: "User" }).exec();
+    const user = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "User",
+    }).exec();
     if (!user) {
       throw new Error("User not found");
     }
@@ -182,7 +218,15 @@ export const UserService = {
   },
 
   // PATCH — partial update (at least one field required)
-  editUser: async ({ user_id, fullName, email, password, phone, address, status }) => {
+  editUser: async ({
+    user_id,
+    fullName,
+    email,
+    password,
+    phone,
+    address,
+    status,
+  }) => {
     if (!user_id) {
       throw new Error("user_id is required");
     }
@@ -195,10 +239,15 @@ export const UserService = {
       address === undefined &&
       status === undefined
     ) {
-      throw new Error("At least one of fullName, email, password, phone, address, or status is required");
+      throw new Error(
+        "At least one of fullName, email, password, phone, address, or status is required",
+      );
     }
 
-    const user = await User.findOne({ user_id: String(user_id).trim(), role: "User" }).exec();
+    const user = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "User",
+    }).exec();
     if (!user) {
       throw new Error("User not found");
     }
@@ -250,7 +299,10 @@ export const UserService = {
     const lat = parseLatitude(latitude);
     const lng = parseLongitude(longitude);
 
-    const user = await User.findOne({ user_id: String(user_id).trim(), role: "User" }).exec();
+    const user = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "User",
+    }).exec();
     if (!user) {
       throw new Error("User not found");
     }
@@ -281,6 +333,34 @@ export const UserService = {
     ]);
 
     return { user_id: id };
+  },
+
+  deleteMyAccount: async (user_id) => {
+    const user = await User.findOne({ _id: user_id, isDeleted: false })
+      .select("_id status")
+      .lean();
+    if (!user) throw new Error("Account not found");
+    if (user.status === 0) throw new Error("Account is already deactivated");
+
+    await Promise.all([
+      User.findByIdAndUpdate(user_id, {
+        $set: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          status: 0,
+          active_store_id: null,
+          resetOtp: null,
+          resetOtpExpiry: null,
+          resetToken: null,
+          resetTokenExpiry: null,
+          loginTwilioOtp: null,
+          loginTwilioOtpExpiry: null,
+        },
+      }),
+      Wishlist.deleteMany({ user_id }),
+      Cart.deleteMany({ user_id }),
+      Address.deleteMany({ user_id }),
+    ]);
   },
 };
 
