@@ -115,7 +115,8 @@ export const PaymentService = {
 
   // Called by OrderService (inside its transaction)
   createPendingPayment: async ({ order, session }) => {
-    const isOnline = order.paymentMethod !== "COD";
+    const isOnline = order.paymentMethod === "ONLINE";
+    const isWallet = order.paymentMethod === "WALLET";
     const expiryMinutes = Number(process.env.PAYMENT_EXPIRY_MINUTES) || 20;
 
     const [payment] = await Payment.create(
@@ -126,7 +127,8 @@ export const PaymentService = {
           method: order.paymentMethod,
           amount: order.grandTotal,
           currency: order.items?.[0]?.currency || "INR",
-          status: "pending",
+          status: isWallet ? "paid" : "pending",
+          paid_at: isWallet ? new Date() : null,
           expires_at: isOnline
             ? new Date(Date.now() + expiryMinutes * 60 * 1000)
             : null,
@@ -284,7 +286,7 @@ export const PaymentService = {
     return { payment: mapPayment(result.payment), order_status: "placed" };
   },
 
-    // payment.captured / order.paid: same job as verify, so reuse markPaid.
+  // payment.captured / order.paid: same job as verify, so reuse markPaid.
   handleRazorpayCaptured: async ({ rzpPayment, eventId }) => {
     const payment = await Payment.findOne({
       "gateway.order_ref": rzpPayment.order_id,
@@ -300,7 +302,9 @@ export const PaymentService = {
     if (payment.status === "paid") return "already_paid";
 
     // Amount must match what we stored.
-    if (Number(rzpPayment.amount) !== RazorpayService.toMinorUnit(payment.amount)) {
+    if (
+      Number(rzpPayment.amount) !== RazorpayService.toMinorUnit(payment.amount)
+    ) {
       console.error("[razorpay-webhook] amount mismatch", String(payment._id));
       return "amount_mismatch";
     }
