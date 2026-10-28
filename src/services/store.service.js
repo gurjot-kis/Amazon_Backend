@@ -22,6 +22,17 @@ const TEXT_FIELDS = [
   "gst_number",
 ];
 
+const VALID_DAYS = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+];
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 const clean = (v) => String(v ?? "").trim();
 const toBool = (v) => v === true || v === "true";
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -90,6 +101,54 @@ const normalizePagination = (page, limit) => ({
   limit: Math.min(Math.max(Number(limit) || 10, 1), 100),
 });
 
+const parseTimings = (raw) => {
+  // Accept either a JSON string (multipart) or a parsed array
+  let arr;
+  if (typeof raw === "string") {
+    try {
+      arr = JSON.parse(raw);
+    } catch {
+      throw new Error("timings must be valid JSON");
+    }
+  } else {
+    arr = raw;
+  }
+
+  if (!Array.isArray(arr)) throw new Error("timings must be an array");
+
+  const seen = new Set();
+  return arr.map((entry, i) => {
+    const day = String(entry.day ?? "")
+      .toLowerCase()
+      .trim();
+    if (!VALID_DAYS.includes(day)) {
+      throw new Error(
+        `timings[${i}].day must be one of: ${VALID_DAYS.join(", ")}`,
+      );
+    }
+    if (seen.has(day)) throw new Error(`Duplicate day in timings: ${day}`);
+    seen.add(day);
+
+    const is_closed = toBool(entry.is_closed);
+
+    if (!is_closed) {
+      const open_time = String(entry.open_time ?? "").trim();
+      const close_time = String(entry.close_time ?? "").trim();
+
+      if (!TIME_RE.test(open_time))
+        throw new Error(`timings[${i}].open_time must be HH:MM (24h)`);
+      if (!TIME_RE.test(close_time))
+        throw new Error(`timings[${i}].close_time must be HH:MM (24h)`);
+      if (open_time >= close_time)
+        throw new Error(`timings[${i}]: close_time must be after open_time`);
+
+      return { day, is_closed, open_time, close_time };
+    }
+
+    return { day, is_closed, open_time: "", close_time: "" };
+  });
+};
+
 const paginate = (pipeline, { page, limit } = {}) =>
   paginateAggregate(Store, pipeline, normalizePagination(page, limit));
 
@@ -104,6 +163,9 @@ export const StoreService = {
     const location = parseLocation(body.latitude, body.longitude);
     await assertUniqueName(vendor_id, store_name);
 
+    const timings =
+      body.timings !== undefined ? parseTimings(body.timings) : undefined;
+
     const storeCount = await Store.countDocuments({ vendor_id });
     const makeDefault = storeCount === 0 || toBool(body.is_default);
 
@@ -115,6 +177,7 @@ export const StoreService = {
       }
     }
     if (location) doc.location = location;
+    if (timings) doc.timings = timings;
     if (images.store_logo) doc.store_logo = images.store_logo;
     if (images.store_banner) doc.store_banner = images.store_banner;
 
@@ -202,6 +265,14 @@ export const StoreService = {
     } else if (toBool(body.remove_banner)) {
       $set.store_banner = "";
       filesToDelete.push(store.store_banner);
+    }
+
+    if (body.timings !== undefined) {
+      if (body.timings === null || body.timings === "") {
+        $unset.timings = ""; // clear timings
+      } else {
+        $set.timings = parseTimings(body.timings);
+      }
     }
 
     // Default flag

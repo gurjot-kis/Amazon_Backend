@@ -63,6 +63,14 @@ const UserSchema = new mongoose.Schema(
     isVendorVerified: { type: Boolean },
     deletedAt: { type: Date, default: null },
     isDeleted: { type: Boolean, default: false, index: true },
+
+    emailChangeOtp: { type: String, default: null },
+    emailChangeOtpExpiry: { type: Date, default: null },
+    pendingEmail: { type: String, default: null },
+
+    phoneChangeOtp: { type: String, default: null },
+    phoneChangeOtpExpiry: { type: Date, default: null },
+    pendingPhone: { type: String, default: null },
   },
   { timestamps: true },
 );

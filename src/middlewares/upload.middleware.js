@@ -97,6 +97,12 @@ export const uploadStoreImages = multer({
   { name: "store_banner", maxCount: 1 },
 ]);
 
+export const uploadProfileImage = multer({
+  storage: createStorage("profiles"),
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).single("profilePicture");
+
 const ensureDir = (dirPath) => {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });

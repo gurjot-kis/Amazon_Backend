@@ -5,6 +5,8 @@ import Address from "../models/address.model.js";
 import Wishlist from "../models/wishlist.model.js";
 import Order from "../models/order.model.js";
 import { mapUserStatus, parseUserStatus } from "../utils/user-status.js";
+import sendEmail from "../utils/email.js";
+import sendTwilioSms from "../utils/twilio-sms.js";
 
 const normalizeName = (value) => String(value).trim();
 const normalizeEmail = (value) => String(value).trim().toLowerCase();
@@ -12,6 +14,25 @@ const normalizeUserId = (value) =>
   String(value ?? "")
     .trim()
     .replace(/^:/, "");
+
+const digitsOnly = (v) => String(v || "").replace(/\D/g, "");
+
+const phoneToE164 = (rawPhone) => {
+  const d = digitsOnly(rawPhone);
+  const cc = String(process.env.TWILIO_DEFAULT_COUNTRY_CODE || "91").replace(
+    /\D/g,
+    "",
+  );
+  if (!d) return "";
+  if (
+    String(rawPhone || "")
+      .trim()
+      .startsWith("+")
+  )
+    return `+${d}`;
+  if (d.length === 10) return `+${cc}${d}`;
+  return `+${d}`;
+};
 
 const buildUserResponse = (user) => ({
   user_id: user.user_id,
@@ -333,6 +354,221 @@ export const UserService = {
     ]);
 
     return { user_id: id };
+  },
+
+  //Mobile apis
+  getMyProfile: async (user_id) => {
+    const user = await User.findOne({ _id: user_id, isDeleted: false })
+      .select("_id name email phone profilePicture")
+      .lean();
+
+    if (!user) throw new Error("User not found");
+
+    return user;
+  },
+
+  requestEmailChange: async (user_id, { newEmail }) => {
+    if (!newEmail || !String(newEmail).trim()) {
+      throw new Error("newEmail is required");
+    }
+
+    const normalizedEmail = normalizeEmail(newEmail);
+
+    const user = await User.findOne({ _id: user_id, isDeleted: false }).exec();
+    if (!user) throw new Error("User not found");
+    if (user.email && user.email === normalizedEmail) {
+      throw new Error("New email must be different from current email");
+    }
+
+    const duplicate = await User.findOne({
+      email: normalizedEmail,
+      _id: { $ne: user_id },
+    }).lean();
+    if (duplicate) throw new Error("Email already in use");
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    user.emailChangeOtp = otp;
+    user.emailChangeOtpExpiry = expiry;
+    user.pendingEmail = normalizedEmail;
+
+    await user.save();
+
+    await sendEmail({
+      to: normalizedEmail,
+      subject: "Verify your new email address",
+      text: `Your OTP to verify your new email address is: ${otp}. It expires in 10 minutes.`,
+      html: `<p>Your OTP to verify your new email address is: <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
+    });
+
+    return { message: "OTP sent to new email address" };
+  },
+
+  verifyEmailChange: async (user_id, { otp }) => {
+    if (!otp) throw new Error("otp is required");
+
+    const user = await User.findOne({ _id: user_id, isDeleted: false }).exec();
+    if (!user) throw new Error("User not found");
+
+    if (!user.emailChangeOtp || !user.pendingEmail) {
+      throw new Error("No pending email change request found");
+    }
+
+    if (new Date() > user.emailChangeOtpExpiry) {
+      throw new Error("OTP has expired");
+    }
+
+    if (user.emailChangeOtp !== String(otp).trim()) {
+      throw new Error("Invalid OTP");
+    }
+
+    const duplicate = await User.findOne({
+      email: user.pendingEmail,
+      _id: { $ne: user_id },
+    }).lean();
+    if (duplicate) throw new Error("Email already in use");
+
+    user.email = user.pendingEmail;
+    user.pendingEmail = null;
+    user.emailChangeOtp = null;
+    user.emailChangeOtpExpiry = null;
+
+    await user.save();
+
+    return { message: "Email updated successfully" };
+  },
+
+  requestPhoneChange: async (user_id, { newPhone }) => {
+    if (!newPhone || !String(newPhone).trim()) {
+      throw new Error("newPhone is required");
+    }
+
+    const user = await User.findOne({ _id: user_id, isDeleted: false }).exec();
+    if (!user) throw new Error("User not found");
+
+    const e164 = phoneToE164(newPhone);
+    const digits = digitsOnly(newPhone);
+    const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+
+    // Check if same as current phone
+    const currentDigits = digitsOnly(user.phone || "");
+    const currentLast10 =
+      currentDigits.length >= 10 ? currentDigits.slice(-10) : currentDigits;
+    if (user.phone && last10 === currentLast10) {
+      throw new Error("New phone must be different from current phone");
+    }
+
+    // Check duplicate across all users
+    const duplicate = await User.findOne({
+      $or: [
+        { phone: String(newPhone).trim() },
+        { phone: digits },
+        { phone: last10 },
+        { phone: `+91${last10}` },
+        { phone: `91${last10}` },
+      ],
+      _id: { $ne: user_id },
+    }).lean();
+    if (duplicate) throw new Error("Phone number already in use");
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    user.phoneChangeOtp = otp;
+    user.phoneChangeOtpExpiry = expiry;
+    user.pendingPhone = e164;
+    await user.save();
+
+    try {
+      const result = await sendTwilioSms(
+        e164,
+        `Your OTP to verify your new phone number is ${otp}. It is valid for 10 minutes. Do not share this code.`,
+      );
+
+      if (!result.sent) {
+        user.phoneChangeOtp = null;
+        user.phoneChangeOtpExpiry = null;
+        user.pendingPhone = null;
+        await user.save();
+        throw new Error("SMS could not be sent. Check Twilio configuration.");
+      }
+    } catch (e) {
+      user.phoneChangeOtp = null;
+      user.phoneChangeOtpExpiry = null;
+      user.pendingPhone = null;
+      await user.save();
+      if (e?.message === "SMS could not be sent. Check Twilio configuration.")
+        throw e;
+      throw new Error(e?.message || "Failed to send SMS");
+    }
+
+    return { phone: e164, message: "OTP sent to new phone number" };
+  },
+
+  verifyPhoneChange: async (user_id, { otp }) => {
+    if (!otp) throw new Error("otp is required");
+
+    const user = await User.findOne({ _id: user_id, isDeleted: false }).exec();
+    if (!user) throw new Error("User not found");
+
+    if (!user.phoneChangeOtp || !user.pendingPhone) {
+      throw new Error("No pending phone change request found");
+    }
+
+    if (new Date() > user.phoneChangeOtpExpiry) {
+      throw new Error("OTP has expired");
+    }
+
+    if (user.phoneChangeOtp !== String(otp).trim()) {
+      throw new Error("Invalid OTP");
+    }
+
+    // Double-check duplicate at time of verify
+    const digits = digitsOnly(user.pendingPhone);
+    const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+    const duplicate = await User.findOne({
+      $or: [
+        { phone: user.pendingPhone },
+        { phone: digits },
+        { phone: last10 },
+        { phone: `+91${last10}` },
+        { phone: `91${last10}` },
+      ],
+      _id: { $ne: user_id },
+    }).lean();
+    if (duplicate) throw new Error("Phone number already in use");
+
+    user.phone = user.pendingPhone;
+    user.pendingPhone = null;
+    user.phoneChangeOtp = null;
+    user.phoneChangeOtpExpiry = null;
+    await user.save();
+
+    return { message: "Phone number updated successfully" };
+  },
+
+  updateMyProfile: async (user_id, { name, profilePicture }) => {
+    const user = await User.findOne({ _id: user_id, isDeleted: false }).exec();
+    if (!user) throw new Error("User not found");
+
+    if (name !== undefined && String(name).trim()) {
+      user.name = normalizeName(name);
+    }
+
+    if (profilePicture !== undefined && profilePicture !== "") {
+      user.profilePicture = profilePicture;
+    }
+
+    await user.save();
+
+    return {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      profilePicture: user.profilePicture,
+    };
   },
 
   deleteMyAccount: async (user_id) => {

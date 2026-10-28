@@ -101,6 +101,54 @@ const StoreSchema = new mongoose.Schema(
     is_default: { type: Boolean, default: false },
     verified_at: { type: Date, default: null },
     rejection_reason: { type: String, default: "", trim: true, maxlength: 500 },
+
+    timings: {
+      type: [
+        {
+          day: {
+            type: String,
+            enum: [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday",
+              "saturday",
+              "sunday",
+            ],
+            required: true,
+          },
+          is_closed: { type: Boolean, default: false },
+          open_time: {
+            type: String,
+            default: "",
+            trim: true,
+            match: [
+              /^$|^([01]\d|2[0-3]):[0-5]\d$/,
+              "open_time must be HH:MM (24h)",
+            ],
+          },
+          close_time: {
+            type: String,
+            default: "",
+            trim: true,
+            match: [
+              /^$|^([01]\d|2[0-3]):[0-5]\d$/,
+              "close_time must be HH:MM (24h)",
+            ],
+          },
+        },
+      ],
+      default: undefined,
+      validate: {
+        validator(arr) {
+          if (!arr || arr.length === 0) return true;
+          const days = arr.map((t) => t.day);
+          return new Set(days).size === days.length; // no duplicate days
+        },
+        message: "Each day can appear only once in timings",
+      },
+    },
   },
   {
     timestamps: true,
