@@ -117,6 +117,10 @@ const OrderSchema = new Schema(
       default: "placed",
       index: true,
     },
+
+    coupon_id: { type: Schema.Types.ObjectId, ref: "Coupon", default: null },
+    coupon_code: { type: String, default: "", trim: true },
+    coupon_discount: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true },
 );

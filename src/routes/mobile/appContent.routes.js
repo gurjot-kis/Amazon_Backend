@@ -12,5 +12,6 @@ router.get(
   requireActiveStore,
   AppContentController.getStoreContactAndTimings,
 );
+router.get("/help", AppContentController.getActiveFaqs);
 
 export default router;

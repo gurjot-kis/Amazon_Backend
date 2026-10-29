@@ -8,6 +8,8 @@ import OrderController from "./order.controller.js";
 import PaymentController from "./payment.controller.js";
 import VendorController from "./vendor.controller.js";
 import StoreController from "./store.controller.js";
+import CouponController from "./coupon.controller.js";
+import FaqController from "./faq.controller.js";
 
 export {
   BannerController,
@@ -20,4 +22,6 @@ export {
   PaymentController,
   VendorController,
   StoreController,
+  CouponController,
+  FaqController,
 };

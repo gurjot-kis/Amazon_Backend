@@ -13,6 +13,7 @@ import { computeCartSummary } from "./cart-settings.service.js";
 import PaymentService from "./payment.service.js";
 import { notifyStatusChange } from "./order-notification.service.js";
 import WalletService from "./wallet.service.js";
+import CouponService from "./coupon.service.js";
 
 const ORDER_STATUSES = [
   "payment_pending",
@@ -158,6 +159,9 @@ const mapSummary = (order) => {
   const smallCart = Number(order.small_cart_charge || 0);
   if (smallCart > 0) summary.small_cart_charge = smallCart;
 
+  const couponDiscount = Number(order.coupon_discount || 0);
+if (couponDiscount > 0) summary.coupon_discount = couponDiscount;
+
   return summary;
 };
 
@@ -171,6 +175,7 @@ const mapOrder = (order) => ({
   grandTotal: Number(order.grandTotal || 0),
   summary: mapSummary(order),
   paymentMethod: order.paymentMethod,
+  coupon_code: order.coupon_code || "",
   paymentReceived: Number(order.paymentReceived || 0),
   status: order.status,
   createdAt: order.createdAt,
@@ -289,7 +294,13 @@ const restoreStock = (items, session) => adjustStock(items, 1, session);
 export const OrderService = {
   /* ------------------------------- Customer ------------------------------- */
 
-  placeOrder: async ({ user_id, store_id, address_id, paymentMethod }) => {
+  placeOrder: async ({
+    user_id,
+    store_id,
+    address_id,
+    paymentMethod,
+    coupon_code,
+  }) => {
     const userId = toObjectId(user_id, "user_id");
     const storeId = toObjectId(store_id, "store_id");
     const addressId = toObjectId(address_id, "address_id");
@@ -450,12 +461,36 @@ export const OrderService = {
       const totalItems = items.reduce((acc, i) => acc + i.quantity, 0);
       const summary = computeCartSummary(items, settings);
 
+      const orderId = new mongoose.Types.ObjectId();
+      let couponDiscount = 0;
+      let couponId = null;
+      let couponCode = "";
+
+      if (normalizeString(coupon_code)) {
+        const applied = await CouponService.applyCoupon({
+          code: coupon_code,
+          user_id: userId,
+          order_amount: summary.items_total,
+          store_id: storeId,
+          order_id: orderId,
+          session,
+        });
+        couponDiscount = applied.discount_amount;
+        couponId = applied.coupon_id;
+        couponCode = applied.code;
+      }
+
+      const grandTotal =
+        Math.round(Math.max(0, summary.grandTotal - couponDiscount) * 100) /
+        100;
+
       // Atomic, guarded stock reservation (products and variants).
       await adjustStock(items, -1, session);
 
       const [created] = await Order.create(
         [
           {
+            _id: orderId,
             user_id: userId,
             store_id: storeId,
             items,
@@ -475,6 +510,9 @@ export const OrderService = {
             },
             totalItems,
             grandTotal: summary.grandTotal,
+            coupon_id: couponId, // add
+            coupon_code: couponCode, // add
+            coupon_discount: couponDiscount, // add
             items_total: summary.items_total,
             price_total: summary.price_total,
             discount: summary.discount,
@@ -493,7 +531,7 @@ export const OrderService = {
       if (method === "WALLET") {
         await WalletService.debit({
           user_id: userId,
-          amount: Math.round(summary.grandTotal * 100), // rupees to paise
+          amount: Math.round(grandTotal * 100), // rupees to paise
           source: "order_payment",
           reference: { type: "Order", id: created._id },
           idempotency_key: `order:${created._id}`,
@@ -569,6 +607,7 @@ export const OrderService = {
         session,
       });
       await restoreStock(cancelled.items, session);
+      await CouponService.releaseCoupon({ order_id: cancelled._id, session });
       return cancelled.toObject();
     });
 
@@ -593,6 +632,7 @@ export const OrderService = {
         session,
       });
       await restoreStock(cancelled.items, session);
+      await CouponService.releaseCoupon({ order_id: cancelled._id, session });
       return cancelled.toObject();
     });
 
@@ -699,6 +739,7 @@ export const OrderService = {
           session,
         });
         await restoreStock(doc.items, session);
+        await CouponService.releaseCoupon({ order_id: doc._id, session });
       }
 
       return { data: doc.toObject(), statusChanged: true };

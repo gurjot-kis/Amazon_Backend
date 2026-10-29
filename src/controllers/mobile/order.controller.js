@@ -35,12 +35,13 @@ const activeStoreId = (req) => {
 
 export const OrderController = {
   placeOrder: handle("Unable to place order", async (req, res) => {
-    const { address_id, paymentMethod } = req.body || {};
+    const { address_id, paymentMethod, coupon_code } = req.body || {};
     const data = await OrderService.placeOrder({
       user_id: authId(req),
       store_id: activeStoreId(req),
       address_id,
       paymentMethod,
+      coupon_code,
     });
     return sendSuccess(res, {
       code: 201,

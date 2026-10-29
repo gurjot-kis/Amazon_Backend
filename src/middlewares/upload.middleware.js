@@ -103,6 +103,12 @@ export const uploadProfileImage = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 }).single("profilePicture");
 
+export const uploadCouponImage = multer({
+  storage: createStorage("coupons"),
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).single("coupon_image");
+
 const ensureDir = (dirPath) => {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
