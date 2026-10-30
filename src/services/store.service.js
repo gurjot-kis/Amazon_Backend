@@ -365,6 +365,14 @@ export const StoreService = {
     removeFile(store.store_banner);
   },
 
+  getMyActiveStoresList: async (vendor_id) => {
+    return Store.find({ vendor_id, status: "active" })
+      .select("_id store_name store_logo")
+      .sort({ is_default: -1, store_name: 1 })
+      .collation({ locale: "en", strength: 2 })
+      .lean();
+  },
+
   // ═════════════════════════ ADMIN ═════════════════════════
 
   getAllStoresForAdmin: async ({

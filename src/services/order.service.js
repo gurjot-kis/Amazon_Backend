@@ -509,7 +509,7 @@ export const OrderService = {
               longitude: finiteOrNull(address.longitude),
             },
             totalItems,
-            grandTotal: summary.grandTotal,
+            grandTotal: grandTotal,
             coupon_id: couponId, // add
             coupon_code: couponCode, // add
             coupon_discount: couponDiscount, // add

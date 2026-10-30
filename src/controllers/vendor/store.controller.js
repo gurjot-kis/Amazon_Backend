@@ -57,6 +57,18 @@ export const StoreController = {
     }
   },
 
+  getMyActiveStoresList: async (req, res, next) => {
+    try {
+      const stores = await StoreService.getMyActiveStoresList(req.user._id);
+      return sendSuccess(res, {
+        message: "Active stores fetched successfully",
+        data: stores,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   getMyStoreById: async (req, res, next) => {
     try {
       const store = await StoreService.getMyStoreById(

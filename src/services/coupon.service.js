@@ -202,6 +202,8 @@ const validateCouponForUser = async ({
     );
   }
 
+  console.log("amount <><>", amount);
+
   if (amount < coupon.min_order_amount) {
     throw new AppError(
       400,
@@ -448,13 +450,33 @@ export const CouponService = {
         .skip(skip)
         .limit(parsedLimit)
         .select(selectPublicFields)
+        .populate({
+          path: "vendor_id",
+          select: "name profilePicture",
+        })
         .lean()
         .exec(),
       Coupon.countDocuments(filter),
     ]);
 
+    const formattedItems = items.map((coupon) => {
+      const { vendor_id, ...couponData } = coupon;
+      const vendor = vendor_id;
+
+      return {
+        ...couponData,
+        user_details: vendor
+          ? {
+              _id: vendor._id,
+              name: vendor.name,
+              image: vendor.profilePicture,
+            }
+          : null,
+      };
+    });
+
     return {
-      items,
+      items: formattedItems,
       pagination: {
         total,
         page: parsedPage,

@@ -12,6 +12,8 @@ router
   .get(StoreController.getMyStores)
   .post(uploadStoreImages, StoreController.createStore);
 
+router.get("/my/active-list", StoreController.getMyActiveStoresList);
+
 router
   .route("/:id")
   .get(StoreController.getMyStoreById)
