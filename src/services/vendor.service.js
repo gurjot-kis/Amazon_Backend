@@ -24,7 +24,7 @@ const buildVendorProfileResponse = (vendor) => ({
   fullName: vendor.name,
   email: vendor.email,
   phone: vendor.phone || "",
-  address: vendor.address || "",  
+  address: vendor.address || "",
   profilePicture: vendor.profilePicture || "",
 });
 
@@ -354,6 +354,19 @@ export const VendorService = {
     await vendor.save();
 
     return buildVendorResponse(vendor);
+  },
+
+  getActiveVendors: async () => {
+    const vendors = await User.find({
+      role: "Vendor",
+      status: 1,
+    })
+      .select("_id name")
+      .sort({ name: 1 })
+      .lean()
+      .exec();
+
+    return vendors;
   },
 };
 

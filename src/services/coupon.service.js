@@ -3,8 +3,11 @@ import fs from "fs";
 import path from "path";
 import Coupon from "../models/coupon.model.js";
 import Store from "../models/store.model.js";
+import User from "../models/user.model.js";
 import CouponUsage from "../models/coupon-usage.model.js";
 import { AppError } from "../utils/AppError.js";
+import { paginateAggregate } from "./pagination.service.js";
+import { toObjectId } from "../utils/object-id.js";
 
 const normalizeString = (value) =>
   value === undefined || value === null ? "" : String(value).trim();
@@ -237,6 +240,18 @@ const toApplyResponse = ({
   final_amount,
 });
 
+const selectAvailableFields =
+  "code title description discount_type discount_value per_user_limit";
+
+const toAvailableCouponResponse = (doc) => ({
+  _id: doc._id,
+  code: doc.code,
+  discount_value: doc.discount_value,
+  discount_type: doc.discount_type,
+  title: doc.title,
+  description: doc.description,
+});
+
 export const CouponService = {
   createCoupon: async ({
     code,
@@ -391,101 +406,88 @@ export const CouponService = {
     vendor_id: vendorIdFilter,
     store_id: storeIdFilter,
     created_by_role: roleFilter,
+    withTotal = true,
   } = {}) => {
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
-    const skip = (parsedPage - 1) * parsedLimit;
 
-    const filter = {};
+    const match = {};
     const normalizedSearch = normalizeString(search);
 
-    if (
-      statusFilter !== undefined &&
-      statusFilter !== null &&
-      normalizeString(statusFilter) !== ""
-    ) {
-      filter.status = parseStatus(statusFilter, { required: true });
+    if (statusFilter != null && normalizeString(statusFilter) !== "") {
+      match.status = parseStatus(statusFilter, { required: true });
     }
-
-    if (
-      scopeFilter !== undefined &&
-      scopeFilter !== null &&
-      normalizeString(scopeFilter) !== ""
-    ) {
+    if (scopeFilter != null && normalizeString(scopeFilter) !== "") {
       const s = normalizeString(scopeFilter).toLowerCase();
-      if (!SCOPES.includes(s)) {
-        throw new Error("scope must be global or store");
-      }
-      filter.scope = s;
+      if (!SCOPES.includes(s)) throw new Error("scope must be global or store");
+      match.scope = s;
     }
-
-    if (vendorIdFilter) {
-      filter.vendor_id = vendorIdFilter;
+    if (vendorIdFilter)
+      match.vendor_id = toObjectId(vendorIdFilter, "vendor_id");
+    if (storeIdFilter) match.store_ids = toObjectId(storeIdFilter, "store_id");
+    if (roleFilter != null && normalizeString(roleFilter) !== "") {
+      match.created_by_role = normalizeString(roleFilter);
     }
-
-    if (storeIdFilter) {
-      filter.store_ids = storeIdFilter;
-    }
-
-    if (
-      roleFilter !== undefined &&
-      roleFilter !== null &&
-      normalizeString(roleFilter) !== ""
-    ) {
-      filter.created_by_role = normalizeString(roleFilter);
-    }
-
     if (normalizedSearch) {
-      const searchRegex = new RegExp(escapeRegex(normalizedSearch), "i");
-      filter.$or = [
-        { code: searchRegex },
-        { title: searchRegex },
-        { description: searchRegex },
-      ];
+      if (/^[A-Za-z0-9_-]+$/.test(normalizedSearch)) {
+        match.code = new RegExp(
+          "^" + escapeRegex(normalizedSearch.toUpperCase()),
+        );
+      } else {
+        match.$text = { $search: normalizedSearch };
+      }
     }
 
-    const [items, total] = await Promise.all([
-      Coupon.find(filter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parsedLimit)
-        .select(selectPublicFields)
-        .populate({
-          path: "vendor_id",
-          select: "name profilePicture",
-        })
-        .lean()
-        .exec(),
-      Coupon.countDocuments(filter),
-    ]);
+    const pipeline = [
+      { $match: match }, // must be first ($text requires this too)
+      { $sort: { createdAt: -1, _id: -1 } }, // uses the index, no in-memory sort
+      // Trim heavy fields BEFORE the facet if you can (match your selectPublicFields)
+      // { $project: { description: 0, store_ids: 0 } },
+    ];
 
-    const formattedItems = items.map((coupon) => {
-      const { vendor_id, ...couponData } = coupon;
-      const vendor = vendor_id;
+    // Runs only on the 10 docs of the current page
+    const dataStages = [
+      { $addFields: { _user_id: { $ifNull: ["$vendor_id", "$created_by"] } } },
+      {
+        $lookup: {
+          from: User.collection.name,
+          localField: "_user_id",
+          foreignField: "_id",
+          pipeline: [{ $project: { name: 1, profilePicture: 1 } }],
+          as: "_user",
+        },
+      },
+      {
+        $addFields: {
+          user_details: {
+            $let: {
+              vars: { u: { $first: "$_user" } },
+              in: {
+                $cond: [
+                  { $ifNull: ["$$u", false] },
+                  {
+                    _id: "$$u._id",
+                    name: "$$u.name",
+                    image: "$$u.profilePicture",
+                  },
+                  null,
+                ],
+              },
+            },
+          },
+        },
+      },
+      { $project: { _user: 0, _user_id: 0, vendor_id: 0, created_by: 0 } },
+    ];
 
-      return {
-        ...couponData,
-        user_details: vendor
-          ? {
-              _id: vendor._id,
-              name: vendor.name,
-              image: vendor.profilePicture,
-            }
-          : null,
-      };
+    const { data, pagination } = await paginateAggregate(Coupon, pipeline, {
+      page: parsedPage,
+      limit: parsedLimit,
+      dataStages,
+      withTotal,
     });
 
-    return {
-      items: formattedItems,
-      pagination: {
-        total,
-        page: parsedPage,
-        limit: parsedLimit,
-        totalPages: Math.ceil(total / parsedLimit),
-        hasNextPage: parsedPage < Math.ceil(total / parsedLimit),
-        hasPrevPage: parsedPage > 1,
-      },
-    };
+    return { items: data, pagination };
   },
 
   getCouponById: async ({ id, vendor_id }) => {
@@ -501,6 +503,7 @@ export const CouponService = {
   updateCoupon: async ({
     id,
     vendor_id,
+    new_vendor_id,
     code,
     title,
     description,
@@ -520,6 +523,16 @@ export const CouponService = {
       buildFilter(resolveId(id), vendor_id),
     ).exec();
     if (!doc) throw new Error("Coupon not found");
+
+    let vendorChanged = false;
+    if (new_vendor_id !== undefined) {
+      const next = new_vendor_id || null; // "" / null => no vendor
+      if (next && !mongoose.Types.ObjectId.isValid(next)) {
+        throw new Error("Invalid vendor_id");
+      }
+      vendorChanged = String(next ?? "") !== String(doc.vendor_id ?? "");
+      doc.vendor_id = next;
+    }
 
     if (code !== undefined) {
       const c = normalizeString(code).toUpperCase();
@@ -607,10 +620,9 @@ export const CouponService = {
       throw new Error("store_ids are required when scope is store");
     }
 
-    if (store_ids !== undefined && nextStoreIds.length > 0) {
-      const ownerVendorId = vendor_id || doc.vendor_id;
-      if (ownerVendorId) {
-        await validateStoreOwnership(ownerVendorId, nextStoreIds);
+    if (nextStoreIds.length > 0 && (store_ids !== undefined || vendorChanged)) {
+      if (doc.vendor_id) {
+        await validateStoreOwnership(doc.vendor_id, nextStoreIds);
       }
     }
 
@@ -762,6 +774,68 @@ export const CouponService = {
       { session },
     );
     return true;
+  },
+
+  listAvailableCoupons: async ({ user_id, store_id, order_amount }) => {
+    const amount = parseFloat(order_amount);
+    if (isNaN(amount) || amount < 0) {
+      throw new AppError(400, "order_amount must be a non-negative number");
+    }
+
+    // Admin coupons (no vendor) apply to every store
+    const ownerConditions = [{ vendor_id: null }];
+
+    // Vendor coupons need a store to be matched against
+    if (store_id) {
+      if (!mongoose.Types.ObjectId.isValid(store_id)) {
+        throw new AppError(400, "Invalid store_id");
+      }
+      const store = await Store.findById(store_id).select("vendor_id").lean();
+      if (!store) throw new AppError(404, "Store not found");
+
+      ownerConditions.push({
+        vendor_id: store.vendor_id,
+        $or: [{ scope: "global" }, { store_ids: store_id }],
+      });
+    }
+
+    const now = new Date();
+
+    const coupons = await Coupon.find({
+      status: 1,
+      start_date: { $lte: now },
+      end_date: { $gte: now },
+      min_order_amount: { $lte: amount },
+      $and: [
+        { $or: ownerConditions },
+        {
+          $or: [
+            { usage_limit: null },
+            { $expr: { $lt: ["$used_count", "$usage_limit"] } },
+          ],
+        },
+      ],
+    })
+      .select(selectAvailableFields)
+      .sort({ min_order_amount: -1, createdAt: -1 })
+      .lean();
+
+    if (coupons.length === 0) return [];
+
+    const usage = await CouponUsage.aggregate([
+      {
+        $match: {
+          user_id: new mongoose.Types.ObjectId(String(user_id)),
+          coupon_id: { $in: coupons.map((c) => c._id) },
+        },
+      },
+      { $group: { _id: "$coupon_id", count: { $sum: 1 } } },
+    ]);
+    const usedMap = new Map(usage.map((u) => [String(u._id), u.count]));
+
+    return coupons
+      .filter((c) => (usedMap.get(String(c._id)) || 0) < c.per_user_limit)
+      .map(toAvailableCouponResponse);
   },
 };
 

@@ -24,6 +24,18 @@ export const StoreController = {
     }
   },
 
+  getStoresByVendorId: async (req, res, next) => {
+    try {
+      const stores = await StoreService.getMyActiveStoresList(req.params.vendor_id);
+      return sendSuccess(res, {
+        message: "Stores fetched successfully",
+        data: stores,
+      });
+    } catch (error) {
+      next(error)
+    }
+  },
+
   getStoreByIdForAdmin: async (req, res, next) => {
     try {
       const store = await StoreService.getStoreByIdForAdmin(req.params.id);

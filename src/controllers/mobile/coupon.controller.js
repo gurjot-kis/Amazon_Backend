@@ -59,6 +59,25 @@ export const CustomerCouponController = {
       },
     });
   }),
+
+  getAvailableCoupons: handle("Unable to fetch coupons", async (req, res) => {
+    const userId = authId(req);
+    const storeId = req.activeStoreId || null;
+
+    const cart = await CartService.getCart(userId, storeId);
+    if (cart.items.length === 0) throw new AppError(400, "Cart is empty");
+
+    const coupons = await CouponService.listAvailableCoupons({
+      user_id: userId,
+      store_id: storeId,
+      order_amount: cart.subtotal,
+    });
+
+    return sendSuccess(res, {
+      message: "Coupons fetched successfully",
+      data: coupons,
+    });
+  }),
 };
 
 export default CustomerCouponController;

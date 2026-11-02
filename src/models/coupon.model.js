@@ -109,12 +109,14 @@ const CouponSchema = new mongoose.Schema(
   { timestamps: true, versionKey: false },
 );
 
-CouponSchema.index({ code: 1 }, { unique: true });
-CouponSchema.index({ vendor_id: 1, status: 1 });
-CouponSchema.index({ scope: 1, status: 1 });
-CouponSchema.index({ created_by: 1 });
-CouponSchema.index({ store_ids: 1 });
+CouponSchema.index({ createdAt: -1, _id: -1 });
+CouponSchema.index({ status: 1, createdAt: -1, _id: -1 });
+CouponSchema.index({ scope: 1, status: 1, createdAt: -1 });
+CouponSchema.index({ vendor_id: 1, status: 1, createdAt: -1 });
+CouponSchema.index({ store_ids: 1, createdAt: -1 });
+CouponSchema.index({ created_by_role: 1, createdAt: -1 });
 CouponSchema.index({ status: 1, start_date: 1, end_date: 1 });
+CouponSchema.index({ title: "text", description: "text" });
 
 const Coupon = mongoose.model("Coupon", CouponSchema);
 

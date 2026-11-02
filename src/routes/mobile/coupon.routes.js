@@ -8,5 +8,10 @@ const router = express.Router();
 router.use(authMiddleware, authorizeRoles(ROLES.USER));
 
 router.post("/apply", requireActiveStore, CouponController.applyCoupon);
+router.get(
+  "/available",
+  requireActiveStore,
+  CouponController.getAvailableCoupons,
+);
 
 export default router;

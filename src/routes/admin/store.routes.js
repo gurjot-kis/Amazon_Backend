@@ -7,6 +7,7 @@ const router = express.Router();
 router.use(authMiddleware, authorizeRoles(ROLES.SUPER_ADMIN));
 
 router.get("/", StoreController.getAllStores);
+router.get("/:vendor_id", StoreController.getStoresByVendorId);
 router.get("/:id/details", StoreController.getStoreByIdForAdmin);
 router.patch("/:id/verification", StoreController.updateVerificationStatus);
 router.patch("/:id/status", StoreController.updateStoreStatusByAdmin)

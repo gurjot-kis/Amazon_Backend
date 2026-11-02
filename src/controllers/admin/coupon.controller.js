@@ -1,3 +1,5 @@
+import fs from "fs";
+import { sendSuccess } from "../../helpers/response.helper.js";
 import { CouponService } from "../../services/coupon.service.js";
 
 const sendError = (res, code, message) => {
@@ -10,7 +12,7 @@ const sendError = (res, code, message) => {
 };
 
 export const CouponController = {
-  createCoupon: async (req, res) => {
+  createCoupon: async (req, res, next) => {
     try {
       const payload = {
         ...req.body,
@@ -19,22 +21,17 @@ export const CouponController = {
       };
 
       const data = await CouponService.createCoupon(payload);
-      return res.status(201).json({
-        success: true,
+      return sendSuccess(res, {
         code: 201,
         message: "Coupon created successfully",
         data,
       });
     } catch (err) {
-      const message = err?.message || "Coupon creation failed";
-      if (message === "Coupon code already exists") {
-        return sendError(res, 409, message);
-      }
-      return sendError(res, 400, message);
+      next(err);
     }
   },
 
-  listCoupons: async (req, res) => {
+  listCoupons: async (req, res, next) => {
     try {
       const {
         page,
@@ -58,104 +55,93 @@ export const CouponController = {
         created_by_role,
       });
 
-      return res.status(200).json({
-        success: true,
-        code: 200,
+      return sendSuccess(res, {
         message: "Coupons fetched successfully",
         data: items,
         pagination,
       });
     } catch (err) {
-      const message = err?.message || "Unable to fetch coupons";
-      if (
-        message === "status must be 0 or 1" ||
-        message === "scope must be global or store"
-      ) {
-        return sendError(res, 400, message);
-      }
-      return sendError(res, 500, "Unable to fetch coupons");
+      next(err);
     }
   },
 
-  getCouponById: async (req, res) => {
+  getCouponById: async (req, res, next) => {
     try {
-      const { coupon_id } = req.params || {};
-      const data = await CouponService.getCouponById({ coupon_id });
-      return res.status(200).json({
-        success: true,
-        code: 200,
+      const { id } = req.params || {};
+      const data = await CouponService.getCouponById({ id });
+      return sendSuccess(res, {
         message: "Coupon fetched successfully",
         data,
       });
     } catch (err) {
-      const message = err?.message || "Unable to fetch coupon";
-      if (message === "Coupon not found") {
-        return sendError(res, 404, message);
-      }
-      return sendError(res, 400, message);
+      next(err);
     }
   },
 
-  updateCoupon: async (req, res) => {
+  updateCoupon: async (req, res, next) => {
     try {
-      const { coupon_id } = req.params || {};
+      const { id } = req.params || {};
+      const { vendor_id: new_vendor_id, ...rest } = req.body || {};
+
       const data = await CouponService.updateCoupon({
-        coupon_id,
-        ...req.body,
+        id,
+        ...rest,
+        new_vendor_id,
       });
-      return res.status(200).json({
-        success: true,
-        code: 200,
+      return sendSuccess(res, {
         message: "Coupon updated successfully",
         data,
       });
     } catch (err) {
-      const message = err?.message || "Coupon update failed";
-      if (message === "Coupon not found") {
-        return sendError(res, 404, message);
-      }
-      if (message === "Coupon code already exists") {
-        return sendError(res, 409, message);
-      }
-      return sendError(res, 400, message);
+      next(err);
     }
   },
 
-  deleteCoupon: async (req, res) => {
+  deleteCoupon: async (req, res, next) => {
     try {
-      const { coupon_id } = req.params || {};
-      const data = await CouponService.deleteCoupon({ coupon_id });
-      return res.status(200).json({
-        success: true,
-        code: 200,
+      const { id } = req.params || {};
+      const data = await CouponService.deleteCoupon({ id });
+      return sendSuccess(res, {
         message: "Coupon deleted successfully",
         data,
       });
     } catch (err) {
-      const message = err?.message || "Coupon deletion failed";
-      if (message === "Coupon not found") {
-        return sendError(res, 404, message);
-      }
-      return sendError(res, 400, message);
+      next(err);
     }
   },
 
-  toggleStatus: async (req, res) => {
+  toggleStatus: async (req, res, next) => {
     try {
-      const { coupon_id } = req.params || {};
-      const data = await CouponService.toggleCouponStatus({ coupon_id });
-      return res.status(200).json({
-        success: true,
-        code: 200,
+      const { id } = req.params || {};
+      const data = await CouponService.toggleCouponStatus({ id });
+      return sendSuccess(res, {
         message: `Coupon ${data.status === 1 ? "activated" : "deactivated"} successfully`,
         data,
       });
     } catch (err) {
-      const message = err?.message || "Status toggle failed";
-      if (message === "Coupon not found") {
-        return sendError(res, 404, message);
-      }
-      return sendError(res, 400, message);
+      next(err);
+    }
+  },
+
+  uploadCouponImage: async (req, res, next) => {
+    try {
+      const coupon_image = req.file
+        ? `/uploads/coupons/${req.file.filename}`
+        : "";
+
+      const data = await CouponService.updateCouponImage({
+        id: req.params.id,
+        image_type: req.body?.coupon_image_type,
+        coupon_image,
+      });
+
+      return sendSuccess(res, {
+        message: "Coupon image uploaded successfully",
+        data,
+      });
+    } catch (error) {
+      if (req.file) fs.unlink(req.file.path, () => {});
+      next(error);
     }
   },
 };

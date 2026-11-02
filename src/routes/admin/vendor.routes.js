@@ -11,6 +11,8 @@ router
   .get(VendorController.getVendors)
   .post(VendorController.addVendor);
 
+router.get("/active-list", VendorController.getActiveVendors);
+
 router
   .route("/:id")
   .get(VendorController.getVendorById)

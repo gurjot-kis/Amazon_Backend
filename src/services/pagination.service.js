@@ -1,21 +1,31 @@
 export const paginateAggregate = async (
   model,
   pipeline,
-  { page = 1, limit = 10 } = {},
+  { page = 1, limit = 10, dataStages = [], withTotal = true } = {},
 ) => {
   const skip = (page - 1) * limit;
 
-  const [result] = await model.aggregate([
-    ...pipeline,
-    {
-      $facet: {
-        data: [{ $skip: skip }, { $limit: limit }],
-        total: [{ $count: "count" }],
-      },
-    },
-  ]);
+  const facet = {
+    data: [
+      { $skip: skip },
+      { $limit: withTotal ? limit : limit + 1 },
+      ...dataStages,
+    ],
+  };
+  if (withTotal) facet.total = [{ $count: "count" }];
+
+  const [result] = await model.aggregate([...pipeline, { $facet: facet }]);
+
+  if (!withTotal) {
+    const hasNextPage = result.data.length > limit;
+    return {
+      data: hasNextPage ? result.data.slice(0, limit) : result.data,
+      pagination: { page, limit, hasNextPage, hasPrevPage: page > 1 },
+    };
+  }
 
   const total = result.total[0]?.count || 0;
+  const totalPages = Math.ceil(total / limit);
 
   return {
     data: result.data,
@@ -23,13 +33,12 @@ export const paginateAggregate = async (
       total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
-      hasNextPage: page < Math.ceil(total / limit),
+      totalPages,
+      hasNextPage: page < totalPages,
       hasPrevPage: page > 1,
     },
   };
 };
-
 export const parsePagination = (
   { page, limit } = {},
   { defaultLimit = 10, maxLimit = 100 } = {},

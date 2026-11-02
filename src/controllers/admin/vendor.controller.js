@@ -19,6 +19,25 @@ export const VendorController = {
     }
   },
 
+  getActiveVendors: async (req, res) => {
+    try {
+
+      const vendors  = await VendorService.getActiveVendors()
+
+      return sendSuccess(res, {
+        message: "Active vendors fetched successfully",
+        data: vendors,
+      })
+      
+    } catch (error) {
+            return sendError(res, {
+        code: 500,
+        message: err.message || "Failed to fetch vendors",
+      });
+    }
+  },
+
+
   getVendorById: async (req, res) => {
     try {
       const vendor = await VendorService.getVendorById({
