@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 dotenv.config();
-import { messaging } from "./config/firebase.js";
+import { messaging } from "../config/firebase.js";
 
 try {
   // dryRun = true: validates credentials, nothing is delivered
