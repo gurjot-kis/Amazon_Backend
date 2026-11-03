@@ -10,5 +10,6 @@ router.get("/", WalletController.getWallet);
 router.post("/topup", WalletController.createTopup);
 router.post("/topup/verify", WalletController.verifyTopup);
 router.get("/transactions", WalletController.listTransactions);
+router.get("/quick-topup-amounts", WalletController.getQuickTopupAmounts)
 
 export default router;

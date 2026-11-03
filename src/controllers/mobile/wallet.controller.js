@@ -47,6 +47,18 @@ export const WalletController = {
       pagination,
     });
   }),
+
+  getQuickTopupAmounts: handle(
+    "Unable to fetch wallet quick top-up amounts",
+    async (req, res) => {
+      const result = await WalletService.getWalletQuickTopupAmounts();
+
+      return sendSuccess(res, {
+        message: "Wallet quick top-up amounts fetched successfully",
+        data: result,
+      });
+    },
+  ),
 };
 
 export default WalletController;

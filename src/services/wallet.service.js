@@ -7,6 +7,7 @@ import { AppError } from "../utils/AppError.js";
 import { toObjectId } from "../utils/object-id.js";
 import { runInTransaction } from "../utils/transaction.js";
 import { buildPagination, parsePagination } from "./pagination.service.js";
+import WalletSettingsService from "./wallet-settings.service.js";
 
 const idToString = (value) => (value == null ? null : String(value));
 
@@ -246,6 +247,23 @@ export const WalletService = {
     return {
       transactions: txns.map(mapTransaction),
       pagination: buildPagination(total, pagination),
+    };
+  },
+
+  getWalletQuickTopupAmounts: async () => {
+    const settings = await WalletSettingsService.getWalletSettings();
+    if (!settings.enabled) {
+      const error = new Error("Wallet is currently disabled");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    return {
+      quick_topup_amounts: [...settings.quick_topup_amounts].sort(
+        (a, b) => a - b,
+      ),
+      min_topup: settings.min_topup,
+      max_topup: settings.max_topup,
     };
   },
 };

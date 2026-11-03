@@ -3,7 +3,7 @@ import { AppError } from "../utils/AppError.js";
 import { toObjectId } from "../utils/object-id.js";
 import RazorpayService from "./razorpay.service.js";
 import WalletService from "./wallet.service.js";
-import { getWalletSettings } from "./wallet-settings.service.js";
+import WalletSettingsService from "./wallet-settings.service.js";
 import { runInTransaction } from "../utils/transaction.js";
 
 const idToString = (value) => (value == null ? null : String(value));
@@ -37,8 +37,6 @@ const markTopupPaid = async ({
   method,
   signature,
 }) => {
-  const settings = await getWalletSettings();
-
   return runInTransaction(async (session) => {
     const topup = await WalletTopup.findOneAndUpdate(
       { _id: topup_id, status: "pending" },
@@ -86,7 +84,7 @@ export const WalletTopupService = {
     const userId = toObjectId(user_id, "user_id");
     const paise = rupeesToPaise(amount);
 
-    const settings = await getWalletSettings();
+    const settings = await WalletSettingsService.getWalletSettings();
     if (!settings.enabled) throw new AppError(403, "Wallet is not available");
     if (paise < settings.min_topup) {
       throw new AppError(400, `Minimum top-up is ₹${settings.min_topup / 100}`);

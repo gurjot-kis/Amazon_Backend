@@ -10,6 +10,7 @@ import VendorController from "./vendor.controller.js";
 import StoreController from "./store.controller.js";
 import CouponController from "./coupon.controller.js";
 import FaqController from "./faq.controller.js";
+import WalletSettingsController from "./wallet-settings.controller.js";
 
 export {
   BannerController,
@@ -24,4 +25,5 @@ export {
   StoreController,
   CouponController,
   FaqController,
+  WalletSettingsController,
 };

@@ -63,6 +63,7 @@ const buildAuthResponseData = (user, token) => {
     user_id: user.user_id,
     name: user.name,
     email: user.email,
+    phone: user.phone || "",
     role: user.role || "User",
     status: mapUserStatus(user.status),
     profilePicture: user.profilePicture || "",

@@ -166,6 +166,12 @@ export const computeCartSummary = (items, settings) => {
   return summary;
 };
 
+const deactivateOthers = (role, exceptId) => {
+  const filter = { role, status: "active" };
+  if (exceptId) filter._id = { $ne: exceptId };
+  return CartSettings.updateMany(filter, { $set: { status: "inactive" } });
+};
+
 export const CartSettingsService = {
   createCartSettings: async ({
     handling_charge,
@@ -178,22 +184,10 @@ export const CartSettingsService = {
     status,
   }) => {
     const normalizedRole = String(role || "SuperAdmin").trim();
+    const requestedStatus = parseStatus(status); // undefined if not sent
 
-    const existingSettings = await CartSettings.findOne({
-      role: normalizedRole,
-    })
-      .select("_id role")
-      .lean()
-      .exec();
-
-    if (existingSettings) {
-      throw createError(
-        `Cart settings already exist for role "${normalizedRole}"`,
-        409,
-      );
-    }
-
-    const doc = await CartSettings.create({
+    // Validate everything first, before touching existing data
+    const payload = {
       handling_charge: parseNonNegativeNumber(
         handling_charge,
         "handling_charge",
@@ -221,9 +215,24 @@ export const CartSettingsService = {
       ),
       user_id: user_id || undefined,
       role: normalizedRole,
-      status: parseStatus(status) ?? "active",
-    });
+    };
 
+    // No status sent: active only if nothing is active yet, otherwise inactive
+    let finalStatus = requestedStatus;
+    if (!finalStatus) {
+      const hasActive = await CartSettings.exists({
+        role: normalizedRole,
+        status: "active",
+      });
+      finalStatus = hasActive ? "inactive" : "active";
+    }
+
+    // Status "active" sent explicitly: deactivate the current active one
+    if (finalStatus === "active") {
+      await deactivateOthers(normalizedRole);
+    }
+
+    const doc = await CartSettings.create({ ...payload, status: finalStatus });
     return mapCartSettings(doc.toObject());
   },
 
@@ -367,6 +376,11 @@ export const CartSettingsService = {
 
     if (parsedStatus !== undefined) doc.status = parsedStatus;
 
+    if (parsedStatus === "active") {
+      await deactivateOthers(doc.role, doc._id);
+    }
+    if (parsedStatus !== undefined) doc.status = parsedStatus;
+
     await doc.save();
 
     const [mapped] = await populateUsers([doc.toObject()]);
@@ -401,7 +415,17 @@ export const CartSettingsService = {
     const doc = await CartSettings.findOne(filter).exec();
     if (!doc) throw createError("Cart settings not found", 404);
 
-    doc.status = doc.status === "active" ? "inactive" : "active";
+    const nextStatus = doc.status === "active" ? "inactive" : "active";
+
+    // Activating this one -> deactivate every other active doc for the same role
+    if (nextStatus === "active") {
+      await CartSettings.updateMany(
+        { role: doc.role, status: "active", _id: { $ne: doc._id } },
+        { $set: { status: "inactive" } },
+      );
+    }
+
+    doc.status = nextStatus;
     await doc.save();
 
     const [mapped] = await populateUsers([doc.toObject()]);
