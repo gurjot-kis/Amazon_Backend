@@ -259,11 +259,11 @@ export const WalletService = {
     }
 
     return {
-      quick_topup_amounts: [...settings.quick_topup_amounts].sort(
-        (a, b) => a - b,
-      ),
-      min_topup: settings.min_topup,
-      max_topup: settings.max_topup,
+      quick_topup_amounts: [...settings.quick_topup_amounts]
+        .sort((a, b) => a - b)
+        .map((amount) => amount / 100),
+      min_topup: settings.min_topup / 100,
+      max_topup: settings.max_topup / 100,
     };
   },
 };
