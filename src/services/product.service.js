@@ -507,6 +507,7 @@ export const ProductService = {
         stockStatus: product.stockStatus,
         status: product.status,
         category: product.category_id,
+        unit: product.unit,
         hasVariants: false,
         variantTypes: [],
         swatches: [],
@@ -544,6 +545,7 @@ export const ProductService = {
         stockStatus: product.stockStatus,
         status: product.status,
         category: product.category_id,
+        unit: product.unit,
         hasVariants: true,
         variantTypes: product.variantTypes,
         imageGroupType: null,
@@ -647,6 +649,7 @@ export const ProductService = {
       stockStatus: product.stockStatus,
       status: product.status,
       category: product.category_id,
+      unit: product.unit,
       hasVariants: true,
       variantTypes: product.variantTypes,
       imageGroupType:
