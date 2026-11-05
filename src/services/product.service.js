@@ -427,7 +427,7 @@ export const ProductService = {
           hasVariants: 1,
           category: 1,
           store: 1,
-          unit: 1,  
+          unit: 1,
           createdAt: 1,
         },
       },
@@ -560,6 +560,8 @@ export const ProductService = {
               price: v.price,
               stock: v.stock,
               stockStatus: v.stockStatus,
+              images: v.images || [], // ✅
+              thumbnail: v.images?.[0] || null, // ✅ optional
               attributes: v.combination.map((c) => ({
                 type: {
                   _id: c.variant_type_id._id,
@@ -713,7 +715,7 @@ export const ProductService = {
       variants,
       imageGroupTypeId,
       store_id,
-    unit,  
+      unit,
     },
   ) => {
     assertObjectId(id, "product ID");
@@ -807,7 +809,7 @@ export const ProductService = {
             variantTypes: hasVariants ? variantTypes : [],
             imageGroupTypeId: hasVariants ? imageGroupTypeId : null,
             ...(store_id && { store_id }),
-              ...(unit !== undefined && unit !== "" && { unit }),  
+            ...(unit !== undefined && unit !== "" && { unit }),
           },
         },
         { new: true, runValidators: true },
