@@ -110,6 +110,7 @@ const OrderSchema = new Schema(
         "payment_pending",
         "placed",
         "confirmed",
+        "packed",
         "shipped",
         "delivered",
         "cancelled",

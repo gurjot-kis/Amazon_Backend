@@ -23,13 +23,14 @@ const handle = (fallbackMessage, fn) => async (req, res) => {
 
 export const OrderController = {
   listOrders: handle("Unable to fetch orders", async (req, res) => {
-    const { status, search, page, limit, user_id } = req.query || {};
-    const { orders, pagination } = await OrderService.listAdminOrders({
+    const { store_id, status, search, page, limit, user_id } = req.query || {};
+    const { orders, pagination } = await OrderService.listVendorOrders({
+      vendor_id: req.user._id,
+      store_id,
       status,
       search,
       page,
       limit,
-      user_id,
     });
     return sendSuccess(res, {
       message: "Orders fetched successfully",
@@ -39,7 +40,8 @@ export const OrderController = {
   }),
 
   getOrderById: handle("Unable to fetch order", async (req, res) => {
-    const data = await OrderService.getAdminOrderById({
+    const data = await OrderService.getVendorOrderById({
+      vendor_id: req.user._id,
       order_id: req.params?.order_id,
     });
     return sendSuccess(res, { message: "Order fetched successfully", data });
@@ -49,9 +51,10 @@ export const OrderController = {
     "Unable to update order status",
     async (req, res) => {
       const { status } = req.body || {};
-      const data = await OrderService.updateOrderStatus({
+      const data = await OrderService.updateVendorOrderStatus({
+        vendor_id: req.user._id,
         order_id: req.params?.order_id,
-        status,
+        status: req.body?.status,
       });
       return sendSuccess(res, {
         message: "Order status updated successfully",
@@ -62,30 +65,3 @@ export const OrderController = {
 };
 
 export default OrderController;
-
-/* --------------------------------- Vendor ---------------------------------- */
-
-// export const VendorOrderController = {
-//   listOrders: handle("Unable to fetch orders", async (req, res) => {
-//     const { status, page, limit } = req.query || {};
-//     const { orders, pagination } = await OrderService.listVendorOrders({
-//       vendor_id: authId(req),
-//       status,
-//       page,
-//       limit,
-//     });
-//     return sendSuccess(res, {
-//       message: "Orders fetched successfully",
-//       data: orders,
-//       pagination,
-//     });
-//   }),
-
-//   getOrderById: handle("Unable to fetch order", async (req, res) => {
-//     const data = await OrderService.getVendorOrderById({
-//       vendor_id: authId(req),
-//       order_id: req.params?.order_id,
-//     });
-//     return sendSuccess(res, { message: "Order fetched successfully", data });
-//   }),
-// };

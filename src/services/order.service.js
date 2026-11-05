@@ -19,15 +19,24 @@ const ORDER_STATUSES = [
   "payment_pending",
   "placed",
   "confirmed",
+  "packed",
   "shipped",
   "delivered",
   "cancelled",
 ];
 const USER_CANCELLABLE_STATUSES = ["payment_pending", "placed", "confirmed"];
+const VENDOR_ALLOWED_STATUSES = [
+  "confirmed",
+  "packed",
+  "shipped",
+  "delivered",
+  "cancelled",
+];
 const STATUS_TRANSITIONS = {
   payment_pending: ["cancelled"],
   placed: ["confirmed", "cancelled"],
-  confirmed: ["shipped", "cancelled"],
+  confirmed: ["packed", "cancelled"],
+  packed: ["shipped", "cancelled"],
   shipped: ["delivered", "cancelled"],
   delivered: [],
   cancelled: [],
@@ -160,7 +169,7 @@ const mapSummary = (order) => {
   if (smallCart > 0) summary.small_cart_charge = smallCart;
 
   const couponDiscount = Number(order.coupon_discount || 0);
-if (couponDiscount > 0) summary.coupon_discount = couponDiscount;
+  if (couponDiscount > 0) summary.coupon_discount = couponDiscount;
 
   return summary;
 };
@@ -182,12 +191,11 @@ const mapOrder = (order) => ({
   updatedAt: order.updatedAt,
 });
 
-const mapVendorOrder = (order, vendorId) => {
-  const items = (order.items || []).filter(
-    (i) => idToString(i.vendor_id) === vendorId,
-  );
+const mapVendorOrder = (order, storeMap) => {
+  const items = order.items || [];
   return {
     _id: idToString(order._id),
+    store: storeMap.get(idToString(order.store_id)) || null,
     items: items.map(mapItem),
     totalItems: items.reduce((acc, i) => acc + Number(i.quantity || 0), 0),
     vendorTotal: items.reduce((acc, i) => acc + Number(i.itemTotal || 0), 0),
@@ -195,6 +203,7 @@ const mapVendorOrder = (order, vendorId) => {
     paymentMethod: order.paymentMethod,
     paymentReceived: Number(order.paymentReceived || 0),
     status: order.status,
+    nextStatuses: getVendorNextStatuses(order.status),
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
   };
@@ -228,6 +237,32 @@ const mapOrderListItem = (order) => {
       .slice(0, PREVIEW_IMAGES)
       .map((i) => i.mainImage || "")
       .filter(Boolean),
+    moreItems: Math.max(0, items.length - 2),
+  };
+};
+
+const VENDOR_LIST_FIELDS =
+  "store_id status paymentMethod paymentReceived createdAt " +
+  "shippingAddress.fullName shippingAddress.phone shippingAddress.city " +
+  "items.name items.mainImage items.quantity items.itemTotal";
+
+const mapVendorOrderListItem = (order, storeMap) => {
+  const items = order.items || [];
+  return {
+    _id: idToString(order._id),
+    store: storeMap.get(idToString(order.store_id)) || null,
+    customerName: order.shippingAddress?.fullName || "",
+    phone: order.shippingAddress?.phone || "",
+    city: order.shippingAddress?.city || "",
+    totalItems: items.reduce((acc, i) => acc + Number(i.quantity || 0), 0),
+    vendorTotal: items.reduce((acc, i) => acc + Number(i.itemTotal || 0), 0),
+    paymentMethod: order.paymentMethod,
+    paymentReceived: Number(order.paymentReceived || 0),
+    status: order.status,
+    nextStatuses: getVendorNextStatuses(order.status),
+    createdAt: order.createdAt,
+    itemNames: items.slice(0, 2).map((i) => i.name),
+    previewImage: items[0]?.mainImage || "",
     moreItems: Math.max(0, items.length - 2),
   };
 };
@@ -290,6 +325,31 @@ const adjustStock = async (items, sign, session) => {
 };
 
 const restoreStock = (items, session) => adjustStock(items, 1, session);
+
+const getVendorNextStatuses = (status) =>
+  (STATUS_TRANSITIONS[status] || []).filter((s) =>
+    VENDOR_ALLOWED_STATUSES.includes(s),
+  );
+
+const getVendorStores = async (vendorId) => {
+  const stores = await Store.find({ vendor_id: vendorId })
+    .select("_id store_name store_logo")
+    .lean()
+    .exec();
+  return {
+    storeIds: stores.map((s) => s._id),
+    storeMap: new Map(
+      stores.map((s) => [
+        idToString(s._id),
+        {
+          _id: idToString(s._id),
+          name: s.store_name,
+          logo: s.store_logo || "",
+        },
+      ]),
+    ),
+  };
+};
 
 export const OrderService = {
   /* ------------------------------- Customer ------------------------------- */
@@ -752,31 +812,72 @@ export const OrderService = {
 
   /* --------------------------------- Vendor -------------------------------- */
 
-  listVendorOrders: async ({ vendor_id, status, page, limit }) => {
+  listVendorOrders: async ({
+    vendor_id,
+    store_id,
+    status,
+    search,
+    page,
+    limit,
+  }) => {
     const vendorId = toObjectId(vendor_id, "vendor_id");
+    const pagination = parsePagination({ page, limit });
+
+    const { storeIds, storeMap } = await getVendorStores(vendorId);
+    if (storeIds.length === 0) {
+      return { orders: [], pagination: buildPagination(0, pagination) };
+    }
+
+    let scopedStoreIds = storeIds;
+    if (normalizeString(store_id)) {
+      const requested = toObjectId(store_id, "store_id");
+      if (!storeMap.has(String(requested))) {
+        throw new AppError(404, "Store not found");
+      }
+      scopedStoreIds = [requested];
+    }
+
     const filter = {
-      "items.vendor_id": vendorId,
+      store_id: { $in: scopedStoreIds },
       status: { $ne: "payment_pending" },
     };
 
     if (status) {
-      const normalizedStatus = normalizeString(status).toLowerCase();
-      if (
-        !ORDER_STATUSES.includes(normalizedStatus) ||
-        normalizedStatus === "payment_pending"
-      ) {
+      const s = normalizeString(status).toLowerCase();
+      if (!ORDER_STATUSES.includes(s) || s === "payment_pending") {
         throw new AppError(400, "Invalid order status");
       }
-      filter.status = normalizedStatus;
+      filter.status = s;
     }
 
-    const { orders, pagination } = await findPaginated(
-      filter,
-      parsePagination({ page, limit }),
-    );
+    const term = normalizeString(search);
+    if (term) {
+      const regex = new RegExp(escapeRegex(term), "i");
+      const or = [
+        { "shippingAddress.fullName": regex },
+        { "shippingAddress.city": regex },
+        { "items.name": regex },
+      ];
+      if (isObjectIdLike(term)) {
+        or.push({ _id: toObjectId(term, "order_id") });
+      } else if (/^[a-f0-9]{4,23}$/i.test(term)) {
+        or.push({
+          $expr: {
+            $regexMatch: {
+              input: { $toString: "$_id" },
+              regex: `${escapeRegex(term)}$`,
+              options: "i",
+            },
+          },
+        });
+      }
+      filter.$or = or;
+    }
+
+    const result = await findPaginated(filter, pagination, VENDOR_LIST_FIELDS);
     return {
-      orders: orders.map((order) => mapVendorOrder(order, String(vendorId))),
-      pagination,
+      orders: result.orders.map((o) => mapVendorOrderListItem(o, storeMap)),
+      pagination: result.pagination,
     };
   },
 
@@ -784,16 +885,75 @@ export const OrderService = {
     const vendorId = toObjectId(vendor_id, "vendor_id");
     const orderId = toObjectId(order_id, "order_id");
 
+    const { storeIds, storeMap } = await getVendorStores(vendorId);
+    if (storeIds.length === 0) throw new AppError(404, "Order not found");
+
     const order = await Order.findOne({
       _id: orderId,
-      "items.vendor_id": vendorId,
+      store_id: { $in: storeIds },
       status: { $ne: "payment_pending" },
     })
       .lean()
       .exec();
     if (!order) throw new AppError(404, "Order not found");
 
-    return mapVendorOrder(order, String(vendorId));
+    return mapVendorOrder(order, storeMap);
+  },
+
+  updateVendorOrderStatus: async ({ vendor_id, order_id, status }) => {
+    const vendorId = toObjectId(vendor_id, "vendor_id");
+    const orderId = toObjectId(order_id, "order_id");
+    const nextStatus = normalizeString(status).toLowerCase();
+
+    if (!nextStatus) throw new AppError(400, "status is required");
+    if (!VENDOR_ALLOWED_STATUSES.includes(nextStatus)) {
+      throw new AppError(400, "Invalid order status");
+    }
+
+    const { storeIds, storeMap } = await getVendorStores(vendorId);
+    if (storeIds.length === 0) throw new AppError(404, "Order not found");
+
+    const result = await runInTransaction(async (session) => {
+      const doc = await Order.findOne({
+        _id: orderId,
+        store_id: { $in: storeIds },
+        status: { $ne: "payment_pending" },
+      })
+        .session(session)
+        .exec();
+      if (!doc) throw new AppError(404, "Order not found");
+
+      const previousStatus = doc.status;
+      if (nextStatus === previousStatus) {
+        return { data: doc.toObject(), statusChanged: false };
+      }
+      if (!STATUS_TRANSITIONS[previousStatus]?.includes(nextStatus)) {
+        throw new AppError(
+          409,
+          `Cannot change order status from ${previousStatus} to ${nextStatus}`,
+        );
+      }
+
+      doc.status = nextStatus;
+      if (nextStatus === "delivered" && doc.paymentMethod === "COD") {
+        doc.paymentReceived = 1;
+      }
+      await doc.save({ session });
+
+      if (nextStatus === "cancelled") {
+        await PaymentService.handleOrderCancellation({
+          order_id: doc._id,
+          session,
+        });
+        await restoreStock(doc.items, session);
+        await CouponService.releaseCoupon({ order_id: doc._id, session });
+      }
+
+      return { data: doc.toObject(), statusChanged: true };
+    });
+
+    if (result.statusChanged) void notifyStatusChange(result.data, nextStatus);
+    return mapVendorOrder(result.data, storeMap);
   },
 };
 
