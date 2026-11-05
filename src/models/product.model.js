@@ -111,6 +111,12 @@ const ProductSchema = new mongoose.Schema(
       ref: "VariantType",
       default: null,
     },
+
+    unit: {
+      type: String,
+      trim: true,
+      default: undefined,
+    },
   },
   { timestamps: true, versionKey: false },
 );

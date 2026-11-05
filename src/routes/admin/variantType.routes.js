@@ -4,19 +4,38 @@ import { authorizeRoles, ROLES } from "../../middlewares/role.middleware.js";
 import { VariantTypeController } from "../../controllers/admin/index.js";
 
 const router = express.Router();
-router.use(authMiddleware, authorizeRoles(ROLES.SUPER_ADMIN));
+router.use(authMiddleware);
 
 router
   .route("/")
-  .get(VariantTypeController.getAllVariantTypes)
-  .post(VariantTypeController.createVariantType);
+  .get(
+    authorizeRoles(ROLES.SUPER_ADMIN, ROLES.VENDOR),
+    VariantTypeController.getAllVariantTypes,
+  )
+  .post(
+    authorizeRoles(ROLES.SUPER_ADMIN),
+    VariantTypeController.createVariantType,
+  );
 
 router
   .route("/:id")
-  .get(VariantTypeController.getVariantTypeById)
-  .put(VariantTypeController.updateVariantType)
-  .delete(VariantTypeController.deleteVariantType);
+  .get(
+    authorizeRoles(ROLES.SUPER_ADMIN),
+    VariantTypeController.getVariantTypeById,
+  )
+  .put(
+    authorizeRoles(ROLES.SUPER_ADMIN),
+    VariantTypeController.updateVariantType,
+  )
+  .delete(
+    authorizeRoles(ROLES.SUPER_ADMIN),
+    VariantTypeController.deleteVariantType,
+  );
 
-router.patch("/:id/status", VariantTypeController.updateVariantTypeStatus);
+router.patch(
+  "/:id/status",
+  authorizeRoles(ROLES.SUPER_ADMIN),
+  VariantTypeController.updateVariantTypeStatus,
+);
 
 export default router;

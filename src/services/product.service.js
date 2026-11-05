@@ -244,6 +244,7 @@ export const ProductService = {
     variantTypes,
     variants,
     imageGroupTypeId,
+    unit,
   }) => {
     if (!name) throw new Error("Product name is required");
     if (!category_id) throw new Error("Category is required");
@@ -323,6 +324,7 @@ export const ProductService = {
       hasVariants: hasVariants || false,
       variantTypes: hasVariants ? variantTypes : [],
       imageGroupTypeId: hasVariants ? imageGroupTypeId : null,
+      ...(unit !== undefined && unit !== "" && { unit }),
     });
 
     try {
@@ -399,6 +401,17 @@ export const ProductService = {
       },
       { $unwind: { path: "$category", preserveNullAndEmptyArrays: true } },
       {
+        $lookup: {
+          from: "stores",
+          localField: "store_id",
+          foreignField: "_id",
+          as: "store",
+          pipeline: [{ $project: { _id: 1, store_name: 1, store_logo: 1 } }],
+        },
+      },
+      { $unwind: { path: "$store", preserveNullAndEmptyArrays: true } },
+
+      {
         $project: {
           _id: 1,
           name: 1,
@@ -413,6 +426,8 @@ export const ProductService = {
           status: 1,
           hasVariants: 1,
           category: 1,
+          store: 1,
+          unit: 1,  
           createdAt: 1,
         },
       },
@@ -694,6 +709,8 @@ export const ProductService = {
       variantTypes,
       variants,
       imageGroupTypeId,
+      store_id,
+    unit,  
     },
   ) => {
     assertObjectId(id, "product ID");
@@ -786,6 +803,8 @@ export const ProductService = {
             hasVariants: hasVariants || false,
             variantTypes: hasVariants ? variantTypes : [],
             imageGroupTypeId: hasVariants ? imageGroupTypeId : null,
+            ...(store_id && { store_id }),
+              ...(unit !== undefined && unit !== "" && { unit }),  
           },
         },
         { new: true, runValidators: true },
@@ -1021,18 +1040,25 @@ export const ProductService = {
 
   updateVendorProductStatus: async (id, vendor_id, status) => {
     assertObjectId(id, "product ID");
-    if (!["active", "inactive"].includes(status)) {
-      throw new Error("Status must be active or inactive");
+    if (!["active", "inactive", "pending"].includes(status)) {
+      throw new Error("Status must be active, inactive or pending");
     }
 
-    const product = await Product.findOne({ _id: id, user_id: vendor_id })
-      .select("status")
-      .lean();
+    const product = await Product.findById(id).select("status store_id").lean();
     if (!product) throw new Error("Product not found");
-    if (["pending", "rejected"].includes(product.status)) {
-      throw new Error(
-        `A ${product.status} product cannot be changed until approved`,
-      );
+
+    // verify the product's store belongs to this vendor
+    const store = await Store.findOne({
+      _id: product.store_id,
+      vendor_id,
+    })
+      .select("_id")
+      .lean();
+    if (!store) throw new Error("Product not found");
+
+    // vendor cannot change rejected products
+    if (product.status === "rejected") {
+      throw new Error("A rejected product cannot be changed");
     }
 
     return Product.findByIdAndUpdate(

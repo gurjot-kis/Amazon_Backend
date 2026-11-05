@@ -26,6 +26,8 @@ const pickProductFields = (body) => ({
   variantTypes: parseJson(body.variantTypes),
   variants: parseJson(body.variants),
   imageGroupTypeId: body.imageGroupTypeId,
+  store_id: body.store_id,
+  unit: body.unit,
 });
 
 export const ProductController = {
