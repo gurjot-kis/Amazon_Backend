@@ -236,6 +236,49 @@ export const UserController = {
       next(error);
     }
   },
+
+  updateUserStatusByAdmin: async (req, res) => {
+    try {
+      const { user_id } = req.params || {};
+      const { status } = req.body || {};
+
+      const data = await UserService.updateUserStatus({
+        user_id,
+        status,
+      });
+
+      return sendSuccess(res, {
+        success: true,
+        code: 200,
+        message: "User status updated successfully",
+        data,
+      });
+    } catch (err) {
+      const message = err?.message || "User status update failed";
+
+      if (message === "User not found") {
+        return sendError(res, {
+          code: 404,
+          message,
+        });
+      }
+
+      if (
+        message === "status is required" ||
+        message === "status must be 0 or 1"
+      ) {
+        return sendError(res, {
+          code: 400,
+          message,
+        });
+      }
+
+      return sendError(res, {
+        code: 400,
+        message,
+      });
+    }
+  },
 };
 
 export default UserController;

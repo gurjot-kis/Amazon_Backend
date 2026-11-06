@@ -102,7 +102,7 @@ export const UserService = {
         .skip(skip)
         .limit(parsedLimit)
         .select(
-          "user_id name email phone address latitude longitude status -_id",
+          "user_id name email phone address latitude longitude status profilePicture -_id",
         )
         .lean()
         .exec(),
@@ -122,6 +122,7 @@ export const UserService = {
           ? u.longitude
           : null,
       status: mapUserStatus(u.status),
+      profilePicture: u.profilePicture,
     }));
 
     return {
@@ -330,6 +331,33 @@ export const UserService = {
 
     user.latitude = lat;
     user.longitude = lng;
+    await user.save();
+
+    return buildUserResponse(user);
+  },
+
+  updateUserStatus: async ({ user_id, status }) => {
+    if (!user_id) {
+      throw new Error("user_id is required");
+    }
+
+    if (status === undefined || status === null || status === "") {
+      throw new Error("status is required");
+    }
+
+    const parsedStatus = parseUserStatus(status);
+
+    const user = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "User",
+    }).exec();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    user.status = parsedStatus;
+
     await user.save();
 
     return buildUserResponse(user);

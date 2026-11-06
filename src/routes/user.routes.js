@@ -35,6 +35,13 @@ router.get(
   UserController.getUserById,
 );
 
+router.patch(
+  "/users/:user_id/status",
+  authMiddleware,
+  authorizeRoles(ROLES.SUPER_ADMIN),
+  UserController.updateUserStatusByAdmin,
+);
+
 router.put(
   "/users/:user_id",
   authMiddleware,
