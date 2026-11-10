@@ -68,6 +68,19 @@ export const HelpController = {
     }
   },
 
+  toggleFaqStatus: async (req, res) => {
+    try {
+      const faq = await HelpService.toggleFaqStatus(req.params.faqId);
+
+      return sendSuccess(res, {
+        message: `FAQ status updated to ${faq.status} successfully`,
+        data: faq,
+      });
+    } catch (error) {
+      return handleError(res, error);
+    }
+  },
+
   deleteFaq: async (req, res) => {
     try {
       const faq = await HelpService.deleteFaq(req.params.faqId);

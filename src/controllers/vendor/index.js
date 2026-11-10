@@ -3,6 +3,7 @@ import StoreController from "./store.controller.js";
 import ProductController from "./product.controller.js";
 import CouponController from "./coupon.controller.js";
 import OrderController from "./order.controller.js";
+import BannerController from "./banner.controller.js";
 
 export {
   VendorController,
@@ -10,4 +11,5 @@ export {
   ProductController,
   CouponController,
   OrderController,
+  BannerController,
 };

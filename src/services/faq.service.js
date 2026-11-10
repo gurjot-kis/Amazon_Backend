@@ -101,6 +101,24 @@ export const HelpService = {
     return faq;
   },
 
+  toggleFaqStatus: async (faqId) => {
+    validateFaqId(faqId);
+
+    const faq = await Help.findById(faqId);
+
+    if (!faq) {
+      const error = new Error("FAQ not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    faq.status = faq.status === "active" ? "inactive" : "active";
+
+    await faq.save();
+
+    return faq;
+  },
+
   deleteFaq: async (faqId) => {
     validateFaqId(faqId);
 

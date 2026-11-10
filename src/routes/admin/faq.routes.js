@@ -13,4 +13,6 @@ router
   .patch(FaqController.updateFaq)
   .delete(FaqController.deleteFaq);
 
+router.patch("/:faqId/status", FaqController.toggleFaqStatus);
+
 export default router;

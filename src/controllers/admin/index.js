@@ -1,4 +1,3 @@
-import BannerController from "./banner.controller.js";
 import CategoryController from "./category.controller.js";
 // import ProductController from "./product.controller.js";
 import VariantTypeController from "./variantType.controller.js";
@@ -12,7 +11,6 @@ import FaqController from "./faq.controller.js";
 import WalletSettingsController from "./wallet-settings.controller.js";
 
 export {
-  BannerController,
   CategoryController,
   // ProductController,
   VariantTypeController,

@@ -4,6 +4,7 @@ import StoreRoutes from "./store.routes.js";
 import ProductRoutes from "./product.routes.js";
 import CouponRoutes from "./coupon.routes.js";
 import OrderRoutes from "./order.routes.js";
+import BannerRoutes from "./banner.routes.js";
 
 const router = express.Router();
 router.use(VendorProfileRoutes);
@@ -11,5 +12,6 @@ router.use("/store", StoreRoutes);
 router.use("/product", ProductRoutes);
 router.use("/coupon", CouponRoutes);
 router.use(OrderRoutes);
+router.use("/banner", BannerRoutes);
 
 export default router;
