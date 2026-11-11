@@ -64,6 +64,8 @@ const AddressSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+AddressSchema.index({ user_id: 1, isDefault: 1 });
+
 const Address = mongoose.model("Address", AddressSchema);
 
 export default Address;

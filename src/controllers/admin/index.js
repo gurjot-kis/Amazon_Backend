@@ -9,6 +9,7 @@ import StoreController from "./store.controller.js";
 import CouponController from "./coupon.controller.js";
 import FaqController from "./faq.controller.js";
 import WalletSettingsController from "./wallet-settings.controller.js";
+import OrderController from "./order.controller.js";
 
 export {
   CategoryController,
@@ -22,4 +23,5 @@ export {
   CouponController,
   FaqController,
   WalletSettingsController,
+  OrderController,
 };

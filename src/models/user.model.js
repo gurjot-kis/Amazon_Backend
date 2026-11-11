@@ -74,6 +74,7 @@ const UserSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+UserSchema.index({ _id: 1, isDeleted: 1, status: 1 });
 
 const User = mongoose.model("User", UserSchema);
 

@@ -166,6 +166,8 @@ StoreSchema.index(
   { unique: true, partialFilterExpression: { is_default: true } },
 );
 
+StoreSchema.index({ _id: 1, status: 1 });
+
 const Store = mongoose.model("Store", StoreSchema);
 
 export default Store;

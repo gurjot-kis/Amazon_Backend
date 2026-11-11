@@ -810,6 +810,81 @@ export const OrderService = {
     return mapOrder(order.data);
   },
 
+  getStoreOrderCounts: async ({ search, vendor_id, page, limit }) => {
+    const pagination = parsePagination({ page, limit });
+
+    const storeFilter = {};
+    if (normalizeString(vendor_id)) {
+      storeFilter.vendor_id = toObjectId(vendor_id, "vendor_id");
+    }
+    const term = normalizeString(search);
+    if (term) storeFilter.store_name = new RegExp(escapeRegex(term), "i");
+
+    const [stores, total] = await Promise.all([
+      Store.find(storeFilter)
+        .select("_id vendor_id store_name store_logo")
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(pagination.skip)
+        .limit(pagination.limit)
+        .lean()
+        .exec(),
+      Store.countDocuments(storeFilter).exec(),
+    ]);
+
+    if (stores.length === 0) {
+      return { stores: [], pagination: buildPagination(total, pagination) };
+    }
+
+    const vendorIds = [
+      ...new Set(stores.map((s) => idToString(s.vendor_id)).filter(Boolean)),
+    ];
+
+    const [counts, vendors] = await Promise.all([
+      Order.aggregate([
+        {
+          $match: {
+            store_id: { $in: stores.map((s) => s._id) },
+            paymentReceived: 1,
+          },
+        },
+        {
+          $group: {
+            _id: "$store_id",
+            orderCount: { $sum: 1 },
+            orderAmount: { $sum: "$grandTotal" },
+            itemsAmount: { $sum: "$items_total" },
+          },
+        },
+      ]).exec(),
+      User.find({ _id: { $in: vendorIds } })
+        .select("name profilePicture")
+        .lean()
+        .exec(),
+    ]);
+
+    const countMap = new Map(counts.map((c) => [idToString(c._id), c]));
+    const vendorMap = new Map(vendors.map((v) => [idToString(v._id), v]));
+
+    return {
+      stores: stores.map((s) => {
+        const v = vendorMap.get(idToString(s.vendor_id));
+        const c = countMap.get(idToString(s._id));
+        return {
+          store_id: idToString(s._id),
+          store_name: s.store_name,
+          store_logo: s.store_logo || "",
+          vendor_id: idToString(s.vendor_id),
+          vendor_name: v?.name || null,
+          vendor_image: v?.profilePicture || "",
+          orderCount: c?.orderCount || 0,
+          orderAmount: Math.round((c?.orderAmount || 0) * 100) / 100,
+          itemsAmount: Math.round((c?.itemsAmount || 0) * 100) / 100,
+        };
+      }),
+      pagination: buildPagination(total, pagination),
+    };
+  },
+
   /* --------------------------------- Vendor -------------------------------- */
 
   listVendorOrders: async ({

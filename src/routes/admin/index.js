@@ -10,6 +10,7 @@ import StoreRoutes from "./store.routes.js";
 import CouponRoutes from "./coupon.routes.js";
 import FaqRoutes from "./faq.routes.js";
 import WalletSettingsRoutes from "./wallet-settings.routes.js";
+import OrderRoutes from "./order.routes.js";
 
 const router = express.Router();
 
@@ -24,5 +25,6 @@ router.use("/store", StoreRoutes);
 router.use("/coupon", CouponRoutes);
 router.use("/faq", FaqRoutes);
 router.use("/wallet-settings", WalletSettingsRoutes);
+router.use("/order", OrderRoutes);
 
 export default router;

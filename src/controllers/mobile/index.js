@@ -12,6 +12,7 @@ import UserController from "./user.controller.js";
 import AppContentController from "./appContent.controller.js";
 import CouponController from "./coupon.controller.js";
 import DeviceTokenController from "./deviceToken.controller.js";
+import DeliveryController from "./delivery.controller.js";
 
 export {
   BannerController,
@@ -28,4 +29,5 @@ export {
   AppContentController,
   CouponController,
   DeviceTokenController,
+  DeliveryController,
 };

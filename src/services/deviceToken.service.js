@@ -2,15 +2,11 @@ import DeviceToken from "../models/DeviceToken.js";
 
 export const DeviceTokenService = {
   saveToken: async ({ userId, token, platform }) => {
-    try {
-      return DeviceToken.findOneAndUpdate(
-        { token },
-        { userId, token, platform },
-        { upsert: true, new: true },
-      );
-    } catch (error) {
-      next(error);
-    }
+    return DeviceToken.findOneAndUpdate(
+      { token },
+      { $set: { userId, platform } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
   },
 
   removeToken: async (token) => {
