@@ -11,6 +11,7 @@ import WishListController from "./wishlist.controller.js";
 import UserController from "./user.controller.js";
 import AppContentController from "./appContent.controller.js";
 import CouponController from "./coupon.controller.js";
+import DeviceTokenController from "./deviceToken.controller.js";
 
 export {
   BannerController,
@@ -26,4 +27,5 @@ export {
   UserController,
   AppContentController,
   CouponController,
+  DeviceTokenController,
 };
