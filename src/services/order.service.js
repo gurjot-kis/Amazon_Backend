@@ -14,6 +14,7 @@ import PaymentService from "./payment.service.js";
 import { notifyStatusChange } from "./order-notification.service.js";
 import WalletService from "./wallet.service.js";
 import CouponService from "./coupon.service.js";
+import NotificationService from "./notification.service.js";
 
 const ORDER_STATUSES = [
   "payment_pending",
@@ -351,6 +352,11 @@ const getVendorStores = async (vendorId) => {
   };
 };
 
+const notifyOrder = (order, status) => {
+  void notifyStatusChange(order, status); // email
+  void NotificationService.orderStatusChanged(order, status); // push
+};
+
 export const OrderService = {
   /* ------------------------------- Customer ------------------------------- */
 
@@ -609,6 +615,7 @@ export const OrderService = {
 
       return created.toObject();
     });
+    if (order.status === "placed") notifyOrder(order, "placed");
 
     return mapOrder(order);
   },
@@ -670,6 +677,7 @@ export const OrderService = {
       await CouponService.releaseCoupon({ order_id: cancelled._id, session });
       return cancelled.toObject();
     });
+    notifyOrder(order, "cancelled");
 
     return mapOrder(order);
   },
@@ -696,7 +704,7 @@ export const OrderService = {
       return cancelled.toObject();
     });
 
-    if (result) void notifyStatusChange(result, "cancelled");
+    if (result) notifyOrder(result, "cancelled");
     return Boolean(result);
   },
 
@@ -805,8 +813,7 @@ export const OrderService = {
       return { data: doc.toObject(), statusChanged: true };
     });
 
-    if (order.statusChanged) void notifyStatusChange(order.data, nextStatus);
-
+    if (order.statusChanged) notifyOrder(order.data, nextStatus);
     return mapOrder(order.data);
   },
 
@@ -1027,7 +1034,7 @@ export const OrderService = {
       return { data: doc.toObject(), statusChanged: true };
     });
 
-    if (result.statusChanged) void notifyStatusChange(result.data, nextStatus);
+    if (result.statusChanged) notifyOrder(result.data, nextStatus);
     return mapVendorOrder(result.data, storeMap);
   },
 };
