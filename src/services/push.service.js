@@ -38,7 +38,7 @@ export const sendPush = async ({
       );
     }
 
-    const tokens = await DeviceTokenService.getTokensByUsers(ids);
+    const tokens = await DeviceTokenService.getTokensByUser(ids);
     if (!tokens.length) return;
 
     const invalid = [];
