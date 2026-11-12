@@ -22,15 +22,18 @@ const handle = (fallbackMessage, fn) => async (req, res) => {
 
 export const NotificationController = {
   listUnread: handle("Unable to fetch notifications", async (req, res) => {
-    const { page, limit } = req.query || {};
-    const { notifications, pagination } = await NotificationService.listUnread({
-      user_id: authId(req),
-      page,
-      limit,
-    });
+    const { page, limit, notificationType } = req.query || {};
+    const { notifications, pagination, unreadCount } =
+      await NotificationService.listNotifications({
+        user_id: authId(req),
+        page,
+        limit,
+        notificationType,
+      });
     return sendSuccess(res, {
       message: "Notifications fetched successfully",
       data: notifications,
+      unreadCount,
       pagination,
     });
   }),

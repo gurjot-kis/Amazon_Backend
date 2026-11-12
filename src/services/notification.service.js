@@ -2,6 +2,7 @@ import Store from "../models/store.model.js";
 import { toObjectId } from "../utils/object-id.js";
 import { sendPush } from "./push.service.js";
 import Notification from "../models/notification.model.js";
+import { AppError } from "../utils/AppError.js";
 
 const shortId = (id) => String(id).slice(-6).toUpperCase();
 const plural = (n, word) => `${n} ${word}${n > 1 ? "s" : ""}`;
@@ -95,13 +96,17 @@ export const NotificationService = {
     }),
 
   /* ------------------------------- INBOX ------------------------------- */
-  listUnread: async ({ user_id, page, limit }) => {
+  listNotifications: async ({ user_id, page, limit, notificationType }) => {
     const userId = toObjectId(user_id, "user_id");
     const p = Math.max(1, parseInt(page, 10) || 1);
     const l = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
-    const filter = { userId, isRead: false };
 
-    const [items, total] = await Promise.all([
+    const includeRead = String(notificationType || "").toLowerCase() === "read";
+
+    // default: only unread | notificationType=read: unread + read
+    const filter = includeRead ? { userId } : { userId, isRead: false };
+
+    const [items, total, unreadCount] = await Promise.all([
       Notification.find(filter)
         .sort({ createdAt: -1, _id: -1 })
         .skip((p - 1) * l)
@@ -109,11 +114,13 @@ export const NotificationService = {
         .lean()
         .exec(),
       Notification.countDocuments(filter).exec(),
+      Notification.countDocuments({ userId, isRead: false }).exec(),
     ]);
 
     const totalPages = Math.ceil(total / l);
     return {
       notifications: items.map(mapNotification),
+      unreadCount,
       pagination: {
         total,
         page: p,
@@ -141,7 +148,6 @@ export const NotificationService = {
     return mapNotification(updated);
   },
 
-  // optional: "Mark all as read" button
   markAllAsRead: async ({ user_id }) => {
     const userId = toObjectId(user_id, "user_id");
     const res = await Notification.updateMany(
