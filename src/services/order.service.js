@@ -112,7 +112,8 @@ const findPaginated = async (filter, pagination, select) => {
   return { orders, pagination: buildPagination(total, pagination) };
 };
 
-const shortId = (id) => (id == null ? null : String(id).slice(-6).toUpperCase());
+const shortId = (id) =>
+  id == null ? null : String(id).slice(-6).toUpperCase();
 
 /* -------------------------------------------------------------------------- */
 /*                                   Mappers                                  */
@@ -229,6 +230,7 @@ const mapOrderListItem = (order) => {
   const items = order.items || [];
   return {
     _id: idToString(order._id),
+    orderId: shortId(order._id),
     store_id: idToString(order.store_id),
     status: order.status,
     totalItems: Number(order.totalItems || 0),

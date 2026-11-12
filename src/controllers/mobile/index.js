@@ -13,6 +13,7 @@ import AppContentController from "./appContent.controller.js";
 import CouponController from "./coupon.controller.js";
 import DeviceTokenController from "./deviceToken.controller.js";
 import DeliveryController from "./delivery.controller.js";
+import NotificationController from "./notification.controller.js";
 
 export {
   BannerController,
@@ -30,4 +31,5 @@ export {
   CouponController,
   DeviceTokenController,
   DeliveryController,
+  NotificationController,
 };

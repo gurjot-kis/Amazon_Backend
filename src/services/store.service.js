@@ -203,7 +203,11 @@ export const StoreService = {
     if (verification_status) match.verification_status = verification_status;
 
     return paginate(
-      [{ $match: match }, { $sort: { is_default: -1, createdAt: -1 } }],
+      [
+        { $match: match },
+        { $sort: { is_default: -1, createdAt: -1 } },
+        { $limit: 1 },
+      ],
       { page, limit },
     );
   },
@@ -365,12 +369,21 @@ export const StoreService = {
     removeFile(store.store_banner);
   },
 
+  // getMyActiveStoresList: async (vendor_id) => {
+  //   return Store.find({ vendor_id, status: "active" })
+  //     .select("_id store_name store_logo")
+  //     .sort({ is_default: -1, store_name: 1 })
+  //     .collation({ locale: "en", strength: 2 })
+  //     .lean();
+  // },
   getMyActiveStoresList: async (vendor_id) => {
-    return Store.find({ vendor_id, status: "active" })
+    const store = await Store.findOne({ vendor_id, status: "active" })
       .select("_id store_name store_logo")
       .sort({ is_default: -1, store_name: 1 })
       .collation({ locale: "en", strength: 2 })
       .lean();
+
+    return store ? [store] : [];
   },
 
   // ═════════════════════════ ADMIN ═════════════════════════

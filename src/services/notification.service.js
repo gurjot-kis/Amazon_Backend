@@ -1,5 +1,7 @@
 import Store from "../models/store.model.js";
+import { toObjectId } from "../utils/object-id.js";
 import { sendPush } from "./push.service.js";
+import Notification from "../models/notification.model.js";
 
 const shortId = (id) => String(id).slice(-6).toUpperCase();
 const plural = (n, word) => `${n} ${word}${n > 1 ? "s" : ""}`;
@@ -36,6 +38,17 @@ const orderData = (order, screen = "order_details") => ({
   orderId: order._id,
   storeId: order.store_id,
   screen,
+});
+
+const mapNotification = (n) => ({
+  _id: String(n._id),
+  type: n.type,
+  title: n.title,
+  body: n.body,
+  imageUrl: n.imageUrl || "",
+  data: n.data || {},
+  isRead: n.isRead,
+  createdAt: n.createdAt,
 });
 
 export const NotificationService = {
@@ -80,6 +93,63 @@ export const NotificationService = {
       body: offer.description || `Use code ${offer.code} and save more`,
       data: { offerId: offer._id, code: offer.code, screen: "offers" },
     }),
+
+  /* ------------------------------- INBOX ------------------------------- */
+  listUnread: async ({ user_id, page, limit }) => {
+    const userId = toObjectId(user_id, "user_id");
+    const p = Math.max(1, parseInt(page, 10) || 1);
+    const l = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
+    const filter = { userId, isRead: false };
+
+    const [items, total] = await Promise.all([
+      Notification.find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((p - 1) * l)
+        .limit(l)
+        .lean()
+        .exec(),
+      Notification.countDocuments(filter).exec(),
+    ]);
+
+    const totalPages = Math.ceil(total / l);
+    return {
+      notifications: items.map(mapNotification),
+      pagination: {
+        total,
+        page: p,
+        limit: l,
+        totalPages,
+        hasNextPage: p < totalPages,
+        hasPrevPage: p > 1,
+      },
+    };
+  },
+
+  markAsRead: async ({ user_id, notification_id }) => {
+    const userId = toObjectId(user_id, "user_id");
+    const id = toObjectId(notification_id, "notification_id");
+
+    const updated = await Notification.findOneAndUpdate(
+      { _id: id, userId },
+      { $set: { isRead: true } },
+      { new: true },
+    )
+      .lean()
+      .exec();
+
+    if (!updated) throw new AppError(404, "Notification not found");
+    return mapNotification(updated);
+  },
+
+  // optional: "Mark all as read" button
+  markAllAsRead: async ({ user_id }) => {
+    const userId = toObjectId(user_id, "user_id");
+    const res = await Notification.updateMany(
+      { userId, isRead: false },
+      { $set: { isRead: true } },
+    );
+    return { updated: res.modifiedCount };
+  },
 };
 
 export default NotificationService;
