@@ -282,17 +282,29 @@ export const BannerService = {
 
     Object.assign(filter, buildSearchFilter(search));
 
-    const [items, total] = await Promise.all([
+    const [rawItems, total] = await Promise.all([
       Banner.find(filter)
         .sort({ sort_order: 1, createdAt: -1 })
         .skip(skip)
         .limit(parsedLimit)
         .select(selectBannerFields)
+        .populate({
+          path: "store_id",
+          select: "store_name store_logo",
+        })
         .lean()
         .exec(),
 
       Banner.countDocuments(filter),
     ]);
+
+    const items = rawItems.map(({ store_id, ...banner }) => ({
+      ...banner,
+      store_id: store_id?._id ?? null,
+      store: store_id
+        ? { store_name: store_id.store_name, store_logo: store_id.store_logo }
+        : null,
+    }));
 
     return {
       items,
