@@ -714,12 +714,24 @@ export const ProductService = {
       user_id,
       product_ids: result.data.map((p) => p._id),
     });
-    const notifyProductIds = new Set(rows.map((r) => String(r.product_id)));
 
-    result.data = result.data.map((p) => ({
-      ...p,
-      isNotifyEnabled: notifyProductIds.has(String(p._id)),
-    }));
+    // productId -> { notifyMeId }  (notifyMeId only for products without variants)
+    const notifyByProduct = new Map();
+    rows.forEach((r) => {
+      const key = String(r.product_id);
+      const entry = notifyByProduct.get(key) || { notifyMeId: null };
+      if (!r.variant_id) entry.notifyMeId = String(r._id);
+      notifyByProduct.set(key, entry);
+    });
+
+    result.data = result.data.map((p) => {
+      const entry = notifyByProduct.get(String(p._id));
+      return {
+        ...p,
+        isNotifyEnabled: !!entry,
+        notifyRequestId: entry?.notifyMeId || null,
+      };
+    });
 
     return result;
   },
