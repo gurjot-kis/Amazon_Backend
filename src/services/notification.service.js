@@ -53,7 +53,8 @@ const mapNotification = (n) => ({
 });
 
 export const NotificationService = {
-  /* ------------------------------- ORDER ------------------------------- */
+  // ----------------------------------------- Push notifications ----------------------------------------------
+  // #ORDER
   orderStatusChanged: async (order, status) => {
     const msg = ORDER_MESSAGES[status];
     if (!msg) return;
@@ -85,7 +86,7 @@ export const NotificationService = {
     }
   },
 
-  /* ------------------------------- OFFER ------------------------------- */
+  // #OFFER
   newOffer: ({ userIds, offer }) =>
     sendPush({
       userIds,
@@ -95,7 +96,23 @@ export const NotificationService = {
       data: { offerId: offer._id, code: offer.code, screen: "offers" },
     }),
 
-  /* ------------------------------- INBOX ------------------------------- */
+  // #BACK IN STOCK
+  backInStock: ({ userId, product, variantId }) =>
+    sendPush({
+      userIds: userId,
+      type: "back_in_stock",
+      title: "Back in stock 🎉",
+      body: `${product.name} is available again. Grab it before it sells out!`,
+      imageUrl: `${process.env.IMAGE_BASE_URL}${product.mainImage}`,
+      data: {
+        productId: String(product._id),
+        variantId: variantId ? String(variantId) : "",
+        storeId: String(product.store_id),
+        screen: "product_details",
+      },
+    }),
+
+  // ----------------------------------------- Services for API's ----------------------------------------------
   listNotifications: async ({ user_id, page, limit, notificationType }) => {
     const userId = toObjectId(user_id, "user_id");
     const p = Math.max(1, parseInt(page, 10) || 1);

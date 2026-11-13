@@ -14,6 +14,7 @@ import CouponController from "./coupon.controller.js";
 import DeviceTokenController from "./deviceToken.controller.js";
 import DeliveryController from "./delivery.controller.js";
 import NotificationController from "./notification.controller.js";
+import NotifyMeController from "./notify-me.controller.js";
 
 export {
   BannerController,
@@ -32,4 +33,5 @@ export {
   DeviceTokenController,
   DeliveryController,
   NotificationController,
+  NotifyMeController,
 };

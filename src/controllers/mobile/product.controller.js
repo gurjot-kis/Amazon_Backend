@@ -18,6 +18,7 @@ export const ProductController = {
         {
           category_id: categoryId,
           store_id: activeStoreId(req),
+          user_id: req.user._id,
           page,
           limit,
           search,
@@ -37,7 +38,9 @@ export const ProductController = {
   productDetails: async (req, res, next) => {
     try {
       const { id } = req.params;
-      const product = await ProductService.getMobileProductById(id);
+      const product = await ProductService.getMobileProductById(id, {
+        user_id: req.user._id,
+      });
 
       return sendSuccess(res, {
         message: "Product fetched successfully",

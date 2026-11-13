@@ -6,6 +6,7 @@ import VariantType from "../models/variantType.model.js";
 import VariantOption from "../models/variantOption.model.js";
 import Store from "../models/store.model.js";
 import { paginateAggregate } from "./pagination.service.js";
+import NotifyMeService from "./notify-me.service.js";
 
 const normalizeName = (value) => String(value).trim();
 const normalizeSku = (s) =>
@@ -469,7 +470,7 @@ export const ProductService = {
     return product;
   },
 
-  getMobileProductById: async (id) => {
+  getMobileProductById: async (id, { user_id } = {}) => {
     const product = await Product.findById(id)
       .populate("category_id", "name _id category_image")
       .populate("variantTypes", "name _id")
@@ -487,6 +488,18 @@ export const ProductService = {
       .select("_id store_name store_logo")
       .lean();
     if (!store) throw new Error("Product not found");
+
+    const notifyRows = await NotifyMeService.getUserRequests({
+      user_id,
+      product_ids: [product._id],
+    });
+    const notifyByVariant = new Map(
+      notifyRows.map((r) => [String(r.variant_id || "none"), String(r._id)]),
+    );
+    const notifyFields = (variantId) => {
+      const requestId = notifyByVariant.get(String(variantId || "none"));
+      return { isNotifyEnabled: !!requestId, notifyMeId: requestId || null };
+    };
 
     if (!product.hasVariants) {
       return {
@@ -509,6 +522,7 @@ export const ProductService = {
         category: product.category_id,
         unit: product.unit,
         hasVariants: false,
+        ...notifyFields(null),
         variantTypes: [],
         swatches: [],
       };
@@ -554,6 +568,7 @@ export const ProductService = {
             option: null,
             options: variants.map((v) => ({
               variantId: v._id,
+              ...notifyFields(v._id),
               sku: v.sku,
               costPrice: v.costPrice,
               sellingPrice: v.sellingPrice,
@@ -612,6 +627,7 @@ export const ProductService = {
 
       swatchMap.get(groupOptId).options.push({
         variantId: v._id,
+        ...notifyFields(v._id),
         sku: v.sku,
         costPrice: v.costPrice,
         sellingPrice: v.sellingPrice,
@@ -665,6 +681,7 @@ export const ProductService = {
   getProductsByCategoryId: async ({
     category_id,
     store_id,
+    user_id,
     page = 1,
     limit = 10,
     search = "",
@@ -684,14 +701,27 @@ export const ProductService = {
     });
     if (!store) throw new Error("Store is not available");
 
-    return ProductService.getAllProducts({
+    const result = await ProductService.getAllProducts({
       category_id,
       store_id,
       page,
       limit,
       search,
-      status: "active", // forced; customers never choose the status
+      status: "active",
     });
+
+    const rows = await NotifyMeService.getUserRequests({
+      user_id,
+      product_ids: result.data.map((p) => p._id),
+    });
+    const notifyProductIds = new Set(rows.map((r) => String(r.product_id)));
+
+    result.data = result.data.map((p) => ({
+      ...p,
+      isNotifyEnabled: notifyProductIds.has(String(p._id)),
+    }));
+
+    return result;
   },
 
   updateProduct: async (
@@ -930,6 +960,10 @@ export const ProductService = {
       await ProductVariant.deleteMany({ product_id: id });
     }
 
+    NotifyMeService.notifyForProduct(id).catch((e) =>
+      console.error("[notify-me] hook failed:", e?.message),
+    );
+
     return updated;
   },
 
@@ -960,6 +994,7 @@ export const ProductService = {
     await Promise.all([
       Product.findByIdAndDelete(id),
       ProductVariant.deleteMany({ product_id: id }),
+      NotifyMeService.cancelForProduct(id),
     ]);
   },
 

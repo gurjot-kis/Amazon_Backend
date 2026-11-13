@@ -15,6 +15,7 @@ import CouponRoutes from "./coupon.routes.js";
 import DeviceTokenRoutes from "./deviceToken.routes.js";
 import DeliveryRoutes from "./delivery.routes.js";
 import NotificationRoutes from "./notification.routes.js";
+import NotifyMeRoutes from "./notify-me.routes.js";
 
 const router = express.Router();
 
@@ -34,5 +35,6 @@ router.use("/coupon", CouponRoutes);
 router.use("/device-token", DeviceTokenRoutes);
 router.use("/delivery", DeliveryRoutes);
 router.use("/notification", NotificationRoutes);
+router.use("/notify-me", NotifyMeRoutes);
 
 export default router;
