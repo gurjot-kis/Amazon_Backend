@@ -1,5 +1,13 @@
 import mongoose from "mongoose";
 
+// Required only for NON-variant products.
+// For save()/create() `this` is the document. For update validators
+// (findByIdAndUpdate + runValidators) `this` is a Query, so we skip the
+// check there and let ProductService do the validation.
+const requiredUnlessVariants = function () {
+  return this instanceof mongoose.Document ? !this.hasVariants : false;
+};
+
 const ProductSchema = new mongoose.Schema(
   {
     category_id: {
@@ -33,9 +41,10 @@ const ProductSchema = new mongoose.Schema(
     },
     sku: {
       type: String,
-      required: true,
+      required: requiredUnlessVariants,
       trim: true,
       uppercase: true,
+      default: undefined,
     },
     slug: {
       type: String,
@@ -44,30 +53,33 @@ const ProductSchema = new mongoose.Schema(
     },
     currency: {
       type: String,
-      required: true,
+      required: requiredUnlessVariants,
       trim: true,
       uppercase: true,
+      default: undefined,
     },
     costPrice: {
       type: Number,
-      required: true,
+      required: requiredUnlessVariants,
       min: 0,
+      default: undefined,
     },
     sellingPrice: {
       type: Number,
-      required: true,
+      required: requiredUnlessVariants,
       min: 0,
+      default: undefined,
     },
     price: {
       type: Number,
-      required: true,
+      required: requiredUnlessVariants,
       min: 0,
+      default: undefined,
     },
     stock: {
       type: Number,
-      required: true,
       min: 0,
-      default: 0,
+      default: 0, // for variant products this is the sum of variant stock
     },
     stockStatus: {
       type: String,
@@ -133,7 +145,12 @@ ProductSchema.pre("save", async function () {
 
 ProductSchema.index({ category_id: 1 });
 ProductSchema.index({ status: 1 });
-ProductSchema.index({ sku: 1 }, { unique: true });
+// partial: products without a SKU (variant products) are not indexed,
+// so many of them can exist without a duplicate-null error
+ProductSchema.index(
+  { sku: 1 },
+  { unique: true, partialFilterExpression: { sku: { $gt: "" } } },
+);
 ProductSchema.index({ slug: 1 }, { unique: true });
 ProductSchema.index({ stockStatus: 1, status: 1 });
 ProductSchema.index({ hasVariants: 1 });

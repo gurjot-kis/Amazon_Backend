@@ -8,18 +8,21 @@ import ProductService from "../../services/product.service.js";
 
 const parseJson = (v) => (v ? (typeof v === "string" ? JSON.parse(v) : v) : []);
 const toBool = (v) => v === true || v === "true";
+// multipart/form-data sends empty fields as "" -> treat them as "not provided"
+const emptyToUndefined = (v) =>
+  v === "" || v === null || v === undefined ? undefined : v;
 
 const pickProductFields = (body) => ({
   name: body.name,
   description: body.description,
   short_description: body.short_description,
   category_id: body.category_id,
-  sku: body.sku,
-  currency: body.currency,
-  costPrice: body.costPrice,
-  sellingPrice: body.sellingPrice,
-  price: body.price,
-  stock: body.stock,
+  sku: emptyToUndefined(body.sku),
+  currency: emptyToUndefined(body.currency),
+  costPrice: emptyToUndefined(body.costPrice),
+  sellingPrice: emptyToUndefined(body.sellingPrice),
+  price: emptyToUndefined(body.price),
+  stock: emptyToUndefined(body.stock),
   mainImage: body.mainImage,
   featuredImages: body.featuredImages,
   hasVariants: toBool(body.hasVariants),
@@ -27,7 +30,7 @@ const pickProductFields = (body) => ({
   variants: parseJson(body.variants),
   imageGroupTypeId: body.imageGroupTypeId,
   store_id: body.store_id,
-  unit: body.unit,
+  unit: emptyToUndefined(body.unit),
 });
 
 export const ProductController = {
