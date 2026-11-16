@@ -5,7 +5,10 @@ import { authMiddleware } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
+router.post("/verification/send-otp", AuthController.sendSignupOtp);
+router.post("/verification/verify-otp", AuthController.verifySignupOtp);
 router.post("/signup", AuthController.signup);
+
 router.post("/login", AuthController.login);
 router.post("/logout", authMiddleware, AuthController.logout);
 router.post("/change-password", authMiddleware, AuthController.changePassword);
@@ -25,4 +28,3 @@ router.post("/login_twilio_otp_verify", AuthController.loginTwilioOtpVerify);
 router.post("/auth/social", SocialAuthController.socialAuth);
 
 export default router;
-

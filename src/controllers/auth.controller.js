@@ -1,3 +1,4 @@
+import { sendSuccess } from "../helpers/response.helper.js";
 import { AuthService } from "../services/auth.service.js";
 import { addToBlacklist } from "../utils/token-blacklist.js";
 import {
@@ -81,6 +82,48 @@ export const AuthController = {
     } catch (err) {
       const message = err?.message || "Signup failed";
       const statusCode = message === "User already exists" ? 409 : 400;
+      return buildFailureResponse(res, statusCode, message);
+    }
+  },
+
+  sendSignupOtp: async (req, res) => {
+    try {
+      const { email } = req.body || {};
+      const data = await AuthService.sendSignupOtp({ email });
+
+      return sendSuccess(res, {
+        message: "OTP sent to your email address",
+        data,
+      });
+    } catch (err) {
+      const message = err?.message || "Failed to send OTP";
+      const statusCode =
+        message === "User already exists"
+          ? 409
+          : message === "Please wait before requesting another OTP"
+            ? 429
+            : 400;
+      return buildFailureResponse(res, statusCode, message);
+    }
+  },
+
+  verifySignupOtp: async (req, res) => {
+    try {
+      const { email, otp } = req.body || {};
+      const data = await AuthService.verifySignupOtp({ email, otp });
+
+      return sendSuccess(res, {
+        message: "Email verified successfully",
+        data,
+      });
+    } catch (err) {
+      const message = err?.message || "OTP verification failed";
+      const statusCode =
+        message === "OTP has expired"
+          ? 410
+          : message.startsWith("Too many attempts")
+            ? 429
+            : 400;
       return buildFailureResponse(res, statusCode, message);
     }
   },

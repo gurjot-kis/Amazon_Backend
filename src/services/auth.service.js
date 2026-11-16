@@ -5,6 +5,12 @@ import User from "../models/user.model.js";
 import { sendEmail } from "../utils/email.js";
 import { sendTwilioSms } from "../utils/twilio-sms.js";
 import { assertUserCanLogin, mapUserStatus } from "../utils/user-status.js";
+import EmailVerification from "../models/email-verification.model.js";
+
+const OTP_TTL_MS = 10 * 60 * 1000; // OTP valid for 10 min
+const VERIFIED_TTL_MS = 30 * 60 * 1000; // after verifying, user has 30 min to finish signup
+const RESEND_COOLDOWN_MS = 60 * 1000;
+const MAX_ATTEMPTS = 5;
 
 const signAuthToken = (user) => {
   const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
@@ -68,7 +74,7 @@ const buildAuthResponseData = (user, token) => {
     status: mapUserStatus(user.status),
     profilePicture: user.profilePicture || "",
     token,
-    store_id: user?.active_store_id ? String(user.active_store_id) : ""
+    store_id: user?.active_store_id ? String(user.active_store_id) : "",
   };
 };
 
@@ -155,6 +161,14 @@ const verifyLoginTwilioOtp = async (user, otp) => {
   return buildAuthResponseData(user, token);
 };
 
+const hashOtp = (email, otp) =>
+  crypto
+    .createHmac("sha256", process.env.JWT_SECRET || "dev-secret")
+    .update(`${email}:${otp}`)
+    .digest("hex");
+
+const generateOtp = () => String(crypto.randomInt(100000, 1000000));
+
 export const AuthService = {
   signup: async ({ email, password, fullName, phone, address }) => {
     if (!email || !password || !fullName) {
@@ -169,6 +183,12 @@ export const AuthService = {
       throw new Error("User already exists");
     }
 
+    const verification = await EmailVerification.findOne({
+      email: normalizedEmail,
+      verified: true,
+    }).exec();
+    if (!verification) throw new Error("Email not verified");
+
     const passwordHash = await bcrypt.hash(String(password), 10);
 
     const user = await User.create({
@@ -180,8 +200,97 @@ export const AuthService = {
       passwordHash,
     });
 
+    await EmailVerification.deleteOne({ _id: verification._id });
+
     const token = signAuthToken(user);
     return buildAuthResponseData(user, token);
+  },
+
+  sendSignupOtp: async ({ email }) => {
+    if (!email) throw new Error("Email is required");
+    const normalizedEmail = String(email).trim().toLocaleLowerCase();
+
+    const existingUser = await User.findOne({ email: normalizedEmail }).exec();
+    if (existingUser) throw new Error("User already exists");
+
+    const existing = await EmailVerification.findOne({
+      email: normalizedEmail,
+    }).exec();
+    if (
+      existing?.lastSentAt &&
+      Date.now() - existing.lastSentAt.getTime() < RESEND_COOLDOWN_MS
+    ) {
+      throw new Error("Please wait before requesting another otp");
+    }
+
+    const otp = generateOtp();
+    const now = Date.now();
+
+    await EmailVerification.findOneAndUpdate(
+      { email: normalizedEmail },
+      {
+        email: normalizedEmail,
+        otpHash: hashOtp(normalizedEmail, otp),
+        otpExpiry: new Date(now + OTP_TTL_MS),
+        attempts: 0,
+        verified: false,
+        lastSentAt: new Date(now),
+        expiresAt: new Date(now + OTP_TTL_MS),
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+
+    try {
+      await sendEmail({
+        to: normalizedEmail,
+        subject: "Verify your email",
+        text: `Your verification OTP is: ${otp}\n\nValid for 10 minutes. Do not share it with anyone.`,
+        html: `<p>Your verification OTP is:</p><h2>${otp}</h2><p>Valid for <strong>10 minutes</strong>. Do not share it with anyone.</p>`,
+      });
+    } catch (e) {
+      await EmailVerification.deleteOne({ email: normalizedEmail });
+      throw new Error("Failed to send verification email");
+    }
+
+    return { email: normalizedEmail };
+  },
+
+  verifySignupOtp: async ({ email, otp }) => {
+    if (!email || !otp) throw new Error("Email and OTP are required");
+    const normalizedEmail = String(email).trim().toLocaleLowerCase();
+
+    const record = await EmailVerification.findOne({
+      email: normalizedEmail,
+    }).exec();
+    if (!record || !record.otpHash)
+      throw new Error("OTP not requested or already used");
+    if (new Date() > record.otpExpiry) throw new Error("OTP has expired");
+    if (record.attempts >= MAX_ATTEMPTS) {
+      throw new Error("Too many attempts. Please request a new OTP");
+    }
+
+    const expected = Buffer.from(record.otpHash, "hex");
+    const actual = Buffer.from(
+      hashOtp(normalizedEmail, String(otp).trim()),
+      "hex",
+    );
+    const ok =
+      expected.length === actual.length &&
+      crypto.timingSafeEqual(expected, actual);
+
+    if (!ok) {
+      record.attempts += 1;
+      await record.save();
+      throw new Error("Invalid OTP");
+    }
+
+    record.verified = true;
+    record.otpHash = null;
+    record.otpExpiry = null;
+    record.expiresAt = new Date(Date.now() + VERIFIED_TTL_MS);
+    await record.save();
+
+    return { email: normalizedEmail, verified: true };
   },
 
   changePassword: async ({ user_id, newPassword, confirmnewPassword }) => {
