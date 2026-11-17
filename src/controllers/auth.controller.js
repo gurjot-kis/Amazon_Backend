@@ -59,24 +59,59 @@ const getOtpFromRequest = (req) => {
   return String(body.otp ?? body.OTP ?? req.query?.otp ?? "").trim();
 };
 
+const getPhoneAndCountryCodeFromRequest = (req) => {
+  let body = req.body;
+
+  if (typeof body === "string" && body.trim()) {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      body = {};
+    }
+  }
+
+  if (!body || typeof body !== "object") {
+    body = {};
+  }
+
+  const phone = String(
+    body.phone ??
+      body.mobile ??
+      body.phone_number ??
+      body.phoneNumber ??
+      req.query?.phone ??
+      req.query?.mobile ??
+      "",
+  ).trim();
+
+  const countryCode = String(
+    body.countryCode ??
+      body.country_code ??
+      req.query?.countryCode ??
+      req.query?.country_code ??
+      "",
+  ).trim();
+
+  return { phone, countryCode };
+};
+
 export const AuthController = {
   signup: async (req, res) => {
     try {
-      const { email, password, fullName, phone, address } = req.body || {};
+      const { email, password, fullName, phone, countryCode, address } =
+        req.body || {};
 
       const data = await AuthService.signup({
         email,
         password,
         fullName,
         phone,
+        countryCode,
         address,
       });
 
-      // Keeping your requested response shape.
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Login successful",
+      return sendSuccess(res, {
+        message: "Signup successful",
         data,
       });
     } catch (err) {
@@ -286,20 +321,21 @@ export const AuthController = {
 
   loginTwilioOtp: async (req, res) => {
     try {
-      const phone = getPhoneFromRequest(req);
+      const { phone, countryCode } = getPhoneAndCountryCodeFromRequest(req);
+
+      console.log(phone, countryCode);
 
       if (!phone) {
         return buildFailureResponse(
           res,
           400,
-          'phone is required. Send JSON: { "phone": "+919780007922" } with header Content-Type: application/json',
+          'phone is required. Send JSON: { "countryCode": "+91", "phone": "9780007922" } with header Content-Type: application/json',
         );
       }
 
-      const data = await AuthService.loginTwilioOtp({ phone });
-      return res.status(200).json({
-        success: true,
-        code: 200,
+      const data = await AuthService.loginTwilioOtp({ phone, countryCode });
+
+      return sendSuccess(res, {
         message: data.is_new_user
           ? "Account created and OTP sent to your phone"
           : "OTP sent to your phone",
@@ -314,83 +350,24 @@ export const AuthController = {
 
   loginTwilioOtpVerify: async (req, res) => {
     try {
-      const phone = getPhoneFromRequest(req);
+      const { phone, countryCode } = getPhoneAndCountryCodeFromRequest(req);
       const otp = getOtpFromRequest(req);
 
       if (!phone) {
         return buildFailureResponse(
           res,
           400,
-          'phone is required. Send JSON: { "phone": "+919780007922", "otp": "123456" } with Content-Type: application/json',
+          'phone is required. Send JSON: { "countryCode": "+91", "phone": "9780007922", "otp": "123456" } with Content-Type: application/json',
         );
       }
 
-      const data = await AuthService.loginTwilioOtpVerify({ phone, otp });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Login successfully",
-        data,
+      const data = await AuthService.loginTwilioOtpVerify({
+        phone,
+        countryCode,
+        otp,
       });
-    } catch (err) {
-      const message = err?.message || "Login failed";
-      const statusCode =
-        message === ACCOUNT_DEACTIVATED_MESSAGE
-          ? 403
-          : message === "Invalid credentials"
-            ? 401
-            : message === "OTP has expired"
-              ? 410
-              : 400;
-      return buildFailureResponse(res, statusCode, message);
-    }
-  },
 
-  loginTwilioOtp: async (req, res) => {
-    try {
-      const phone = getPhoneFromRequest(req);
-
-      if (!phone) {
-        return buildFailureResponse(
-          res,
-          400,
-          'phone is required. Send JSON: { "phone": "+919780007922" } with header Content-Type: application/json',
-        );
-      }
-
-      const data = await AuthService.loginTwilioOtp({ phone });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: data.is_new_user
-          ? "Account created and OTP sent to your phone"
-          : "OTP sent to your phone",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Failed to send OTP";
-      const statusCode = message === ACCOUNT_DEACTIVATED_MESSAGE ? 403 : 400;
-      return buildFailureResponse(res, statusCode, message);
-    }
-  },
-
-  loginTwilioOtpVerify: async (req, res) => {
-    try {
-      const phone = getPhoneFromRequest(req);
-      const otp = getOtpFromRequest(req);
-
-      if (!phone) {
-        return buildFailureResponse(
-          res,
-          400,
-          'phone is required. Send JSON: { "phone": "+919780007922", "otp": "123456" } with Content-Type: application/json',
-        );
-      }
-
-      const data = await AuthService.loginTwilioOtpVerify({ phone, otp });
-      return res.status(200).json({
-        success: true,
-        code: 200,
+      return sendSuccess(res, {
         message: "Login successfully",
         data,
       });

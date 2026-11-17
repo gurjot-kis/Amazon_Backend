@@ -591,9 +591,14 @@ export const StoreService = {
       isDefault: true,
     }).lean();
 
+    const updated_user_address = user_address.map((address) => ({
+      ...address,
+      countryCode: address.countryCode || "+91",
+    }));
+
     return {
       store_details,
-      user_address,
+      user_address: updated_user_address,
     };
   },
 };

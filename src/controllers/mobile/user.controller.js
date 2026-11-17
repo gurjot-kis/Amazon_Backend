@@ -39,9 +39,10 @@ export const UserController = {
   requestPhoneChange: async (req, res, next) => {
     try {
       const user_id = req.user._id;
-      const { newPhone } = req.body;
+      const { newPhone, countryCode } = req.body;
       const result = await UserService.requestPhoneChange(user_id, {
         newPhone,
+        countryCode,
       });
       return sendSuccess(res, result);
     } catch (error) {

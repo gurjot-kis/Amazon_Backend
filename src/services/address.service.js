@@ -40,6 +40,7 @@ const mapAddress = (address) => ({
   _id: address._id,
   user_id: address.user_id,
   fullName: address.fullName,
+  countryCode: address.countryCode || "+91",
   phone: address.phone,
   addressLine1: address.addressLine1,
   addressLine2: address.addressLine2 || "",
@@ -128,6 +129,7 @@ export const AddressService = {
   addAddress: async ({
     user_id,
     fullName,
+    countryCode,
     phone,
     addressLine1,
     addressLine2,
@@ -154,6 +156,7 @@ export const AddressService = {
     const created = await Address.create({
       user_id: userId,
       fullName: normalizeString(fullName),
+      countryCode: countryCode ? normalizeString(countryCode) : "+91",
       phone: normalizeString(phone),
       addressLine1: normalizeString(addressLine1),
       addressLine2: normalizeString(addressLine2),
@@ -201,6 +204,7 @@ export const AddressService = {
     user_id,
     address_id,
     fullName,
+    countryCode,
     phone,
     addressLine1,
     addressLine2,
@@ -236,6 +240,9 @@ export const AddressService = {
     });
 
     address.fullName = normalizeString(fullName);
+    if (countryCode !== undefined) {
+      address.countryCode = countryCode ? normalizeString(countryCode) : "+91";
+    }
     address.phone = normalizeString(phone);
     address.addressLine1 = normalizeString(addressLine1);
     address.addressLine2 = normalizeString(addressLine2);

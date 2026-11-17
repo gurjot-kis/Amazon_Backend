@@ -45,12 +45,12 @@ const findUserByPhone = async (rawPhone) => {
   }).exec();
 };
 
-const phoneToE164 = (rawPhone) => {
+const phoneToE164 = (rawPhone, rawCountryCode) => {
   const d = digitsOnly(rawPhone);
-  const cc = String(process.env.TWILIO_DEFAULT_COUNTRY_CODE || "91").replace(
-    /\D/g,
-    "",
-  );
+  const cc = String(
+    rawCountryCode || process.env.TWILIO_DEFAULT_COUNTRY_CODE || "91",
+  ).replace(/\D/g, "");
+
   if (!d) return "";
   if (
     String(rawPhone || "")
@@ -70,6 +70,7 @@ const buildAuthResponseData = (user, token) => {
     name: user.name,
     email: user.email,
     phone: user.phone || "",
+    countryCode: user.countryCode || "+91",
     role: user.role || "User",
     status: mapUserStatus(user.status),
     profilePicture: user.profilePicture || "",
@@ -78,7 +79,7 @@ const buildAuthResponseData = (user, token) => {
   };
 };
 
-const sendLoginTwilioOtpToUser = async (user, phone) => {
+const sendLoginTwilioOtpToUser = async (user, phone, countryCode) => {
   assertUserCanLogin(user);
 
   const otp = String(Math.floor(100000 + Math.random() * 900000));
@@ -88,7 +89,7 @@ const sendLoginTwilioOtpToUser = async (user, phone) => {
   user.loginTwilioOtpExpiry = otpExpiry;
   await user.save();
 
-  const to = phoneToE164(phone);
+  const to = phoneToE164(phone, countryCode || user.countryCode);
   try {
     const result = await sendTwilioSms(
       to,
@@ -113,13 +114,20 @@ const sendLoginTwilioOtpToUser = async (user, phone) => {
   return { phone: to };
 };
 
-const findOrCreateUserByPhone = async (rawPhone) => {
+const findOrCreateUserByPhone = async (rawPhone, rawCountryCode) => {
   let user = await findUserByPhone(rawPhone);
   if (user) {
+    if (rawCountryCode && !user.countryCode) {
+      user.countryCode = String(rawCountryCode).trim();
+      await user.save();
+    }
     return { user, is_new_user: false };
   }
 
-  const e164 = phoneToE164(rawPhone);
+  const cleanCountryCode = rawCountryCode
+    ? String(rawCountryCode).trim()
+    : "+91";
+  const e164 = phoneToE164(rawPhone, cleanCountryCode);
   const digits = digitsOnly(rawPhone);
   const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
   let email = `phone_${last10 || digits}@otp.local`;
@@ -133,6 +141,7 @@ const findOrCreateUserByPhone = async (rawPhone) => {
     name: "User",
     email,
     phone: e164,
+    countryCode: cleanCountryCode,
     role: "User",
     passwordHash: "",
   });
@@ -170,7 +179,14 @@ const hashOtp = (email, otp) =>
 const generateOtp = () => String(crypto.randomInt(100000, 1000000));
 
 export const AuthService = {
-  signup: async ({ email, password, fullName, phone, address }) => {
+  signup: async ({
+    email,
+    password,
+    fullName,
+    phone,
+    countryCode,
+    address,
+  }) => {
     if (!email || !password || !fullName) {
       throw new Error("Email, password, and fullName are required");
     }
@@ -195,6 +211,7 @@ export const AuthService = {
       email: normalizedEmail,
       name: normalizedFullName,
       phone: phone ? String(phone) : "",
+      countryCode: countryCode ? String(countryCode).trim() : "+91",
       address: address ? String(address) : "",
       role: "User",
       passwordHash,
@@ -513,13 +530,26 @@ export const AuthService = {
     return buildAuthResponseData(user, token);
   },
 
-  loginTwilioOtp: async ({ phone }) => {
+  loginTwilioOtp: async ({ phone, countryCode }) => {
     if (!phone || !String(phone).trim()) {
       throw new Error("phone is required");
     }
 
-    const { user, is_new_user } = await findOrCreateUserByPhone(phone);
-    const result = await sendLoginTwilioOtpToUser(user, phone);
+    const { user, is_new_user } = await findOrCreateUserByPhone(
+      phone,
+      countryCode,
+    );
+
+    if (!is_new_user && countryCode) {
+      const providedCc = String(countryCode).trim();
+      const userCc = String(user.countryCode || "").trim();
+
+      if (userCc && userCc !== providedCc) {
+        throw new Error("Incorrect country code for this phone number");
+      }
+    }
+
+    const result = await sendLoginTwilioOtpToUser(user, phone, countryCode);
 
     return {
       ...result,
@@ -527,7 +557,7 @@ export const AuthService = {
     };
   },
 
-  loginTwilioOtpVerify: async ({ phone, otp }) => {
+  loginTwilioOtpVerify: async ({ phone, countryCode, otp }) => {
     if (!phone || !otp) {
       throw new Error("phone and otp are required");
     }
@@ -535,6 +565,15 @@ export const AuthService = {
     const user = await findUserByPhone(phone);
     if (!user) {
       throw new Error("Invalid credentials");
+    }
+
+    if (countryCode) {
+      const providedCc = String(countryCode).trim();
+      const userCc = String(user.countryCode || "").trim();
+
+      if (userCc && userCc !== providedCc) {
+        throw new Error("Incorrect country code for this phone number");
+      }
     }
 
     return verifyLoginTwilioOtp(user, otp);

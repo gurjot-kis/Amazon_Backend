@@ -38,6 +38,7 @@ const buildUserResponse = (user) => ({
   user_id: user.user_id,
   fullName: user.name,
   email: user.email,
+  countryCode: user.countryCode || "+91",
   phone: user.phone || "",
   address: user.address || "",
   latitude:
@@ -73,6 +74,22 @@ const parseLongitude = (value) => {
     throw new Error("longitude must be a number between -180 and 180");
   }
   return n;
+};
+
+const phoneToE164WithCc = (rawPhone, rawCountryCode) => {
+  const d = digitsOnly(rawPhone);
+  const cc = String(
+    rawCountryCode || process.env.TWILIO_DEFAULT_COUNTRY_CODE || "91",
+  ).replace(/\D/g, "");
+  if (!d) return "";
+  if (
+    String(rawPhone || "")
+      .trim()
+      .startsWith("+")
+  )
+    return `+${d}`;
+  if (d.length === 10) return `+${cc}${d}`;
+  return `+${d}`;
 };
 
 export const UserService = {
@@ -387,12 +404,15 @@ export const UserService = {
   //Mobile apis
   getMyProfile: async (user_id) => {
     const user = await User.findOne({ _id: user_id, isDeleted: false })
-      .select("_id name email phone profilePicture")
+      .select("_id name email countryCode phone profilePicture")
       .lean();
 
     if (!user) throw new Error("User not found");
 
-    return user;
+    return {
+      ...user,
+      countryCode: user.countryCode || "+91",
+    };
   },
 
   requestEmailChange: async (user_id, { newEmail }) => {
@@ -467,15 +487,27 @@ export const UserService = {
     return { message: "Email updated successfully" };
   },
 
-  requestPhoneChange: async (user_id, { newPhone }) => {
+  requestPhoneChange: async (user_id, { newPhone, countryCode }) => {
     if (!newPhone || !String(newPhone).trim()) {
       throw new Error("newPhone is required");
     }
 
+    if (!countryCode || !String(countryCode).trim()) {
+      throw new Error("countryCode is required");
+    }
+
+    const providedCc = String(countryCode).trim();
+
     const user = await User.findOne({ _id: user_id, isDeleted: false }).exec();
     if (!user) throw new Error("User not found");
 
-    const e164 = phoneToE164(newPhone);
+    // Validate country code matches user's registered country code
+    const userCc = String(user.countryCode || "").trim();
+    if (userCc && userCc !== providedCc) {
+      throw new Error("Incorrect country code for this account");
+    }
+
+    const e164 = phoneToE164WithCc(newPhone, providedCc); // updated helper below
     const digits = digitsOnly(newPhone);
     const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
 
@@ -495,17 +527,19 @@ export const UserService = {
         { phone: last10 },
         { phone: `+91${last10}` },
         { phone: `91${last10}` },
+        { phone: e164 },
       ],
       _id: { $ne: user_id },
     }).lean();
     if (duplicate) throw new Error("Phone number already in use");
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
-    const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const expiry = new Date(Date.now() + 10 * 60 * 1000);
 
     user.phoneChangeOtp = otp;
     user.phoneChangeOtpExpiry = expiry;
     user.pendingPhone = e164;
+    user.pendingCountryCode = providedCc; // store to validate on verify
     await user.save();
 
     try {
@@ -518,6 +552,7 @@ export const UserService = {
         user.phoneChangeOtp = null;
         user.phoneChangeOtpExpiry = null;
         user.pendingPhone = null;
+        user.pendingCountryCode = null;
         await user.save();
         throw new Error("SMS could not be sent. Check Twilio configuration.");
       }
@@ -525,6 +560,7 @@ export const UserService = {
       user.phoneChangeOtp = null;
       user.phoneChangeOtpExpiry = null;
       user.pendingPhone = null;
+      user.pendingCountryCode = null;
       await user.save();
       if (e?.message === "SMS could not be sent. Check Twilio configuration.")
         throw e;
@@ -568,7 +604,9 @@ export const UserService = {
     if (duplicate) throw new Error("Phone number already in use");
 
     user.phone = user.pendingPhone;
+    user.countryCode = user.pendingCountryCode || user.countryCode;
     user.pendingPhone = null;
+    user.pendingCountryCode = null;
     user.phoneChangeOtp = null;
     user.phoneChangeOtpExpiry = null;
     await user.save();
@@ -594,6 +632,7 @@ export const UserService = {
       _id: user._id,
       name: user.name,
       email: user.email,
+      countryCode: user.countryCode || "+91",
       phone: user.phone,
       profilePicture: user.profilePicture,
     };

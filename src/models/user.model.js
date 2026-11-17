@@ -18,6 +18,7 @@ const UserSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+    countryCode: { type: String, default: "+91", trim: true },
     phone: { type: String, default: "" },
     address: { type: String, default: "" },
     latitude: { type: Number, default: null },
@@ -71,6 +72,7 @@ const UserSchema = new mongoose.Schema(
     phoneChangeOtp: { type: String, default: null },
     phoneChangeOtpExpiry: { type: Date, default: null },
     pendingPhone: { type: String, default: null },
+    pendingCountryCode: { type: String, default: "+91" },
   },
   { timestamps: true },
 );

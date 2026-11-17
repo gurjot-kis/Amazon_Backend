@@ -441,7 +441,39 @@ export const ProductService = {
         },
       },
       { $unwind: { path: "$store", preserveNullAndEmptyArrays: true } },
-
+      {
+        $lookup: {
+          from: "productvariants",
+          let: { pid: "$_id", hv: "$hasVariants" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$product_id", "$$pid"] },
+                    { $eq: ["$$hv", true] },
+                    { $eq: ["$status", "active"] },
+                  ],
+                },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                minPrice: { $min: "$sellingPrice" },
+                maxPrice: { $max: "$sellingPrice" },
+              },
+            },
+          ],
+          as: "variantPriceRange",
+        },
+      },
+      {
+        $unwind: {
+          path: "$variantPriceRange",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
       {
         $project: {
           _id: 1,
@@ -459,6 +491,16 @@ export const ProductService = {
           category: 1,
           store: 1,
           unit: 1,
+          priceRange: {
+            $cond: {
+              if: "$hasVariants",
+              then: {
+                min: "$variantPriceRange.minPrice",
+                max: "$variantPriceRange.maxPrice",
+              },
+              else: null,
+            },
+          },
           createdAt: 1,
         },
       },
