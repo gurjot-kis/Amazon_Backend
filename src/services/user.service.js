@@ -76,22 +76,6 @@ const parseLongitude = (value) => {
   return n;
 };
 
-const phoneToE164WithCc = (rawPhone, rawCountryCode) => {
-  const d = digitsOnly(rawPhone);
-  const cc = String(
-    rawCountryCode || process.env.TWILIO_DEFAULT_COUNTRY_CODE || "91",
-  ).replace(/\D/g, "");
-  if (!d) return "";
-  if (
-    String(rawPhone || "")
-      .trim()
-      .startsWith("+")
-  )
-    return `+${d}`;
-  if (d.length === 10) return `+${cc}${d}`;
-  return `+${d}`;
-};
-
 export const UserService = {
   getUsers: async ({ page = 1, limit = 10, search = "", status } = {}) => {
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
@@ -501,13 +485,6 @@ export const UserService = {
     const user = await User.findOne({ _id: user_id, isDeleted: false }).exec();
     if (!user) throw new Error("User not found");
 
-    // Validate country code matches user's registered country code
-    const userCc = String(user.countryCode || "").trim();
-    if (userCc && userCc !== providedCc) {
-      throw new Error("Incorrect country code for this account");
-    }
-
-    const e164 = phoneToE164WithCc(newPhone, providedCc); // updated helper below
     const digits = digitsOnly(newPhone);
     const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
 
@@ -525,9 +502,6 @@ export const UserService = {
         { phone: String(newPhone).trim() },
         { phone: digits },
         { phone: last10 },
-        { phone: `+91${last10}` },
-        { phone: `91${last10}` },
-        { phone: e164 },
       ],
       _id: { $ne: user_id },
     }).lean();
@@ -538,9 +512,12 @@ export const UserService = {
 
     user.phoneChangeOtp = otp;
     user.phoneChangeOtpExpiry = expiry;
-    user.pendingPhone = e164;
-    user.pendingCountryCode = providedCc; // store to validate on verify
+    user.pendingPhone = last10; // just store digits
+    user.pendingCountryCode = providedCc;
     await user.save();
+
+    // Build E164 only for sending SMS — not for storage
+    const e164 = `${providedCc.startsWith("+") ? providedCc : "+" + providedCc}${last10}`;
 
     try {
       const result = await sendTwilioSms(
@@ -567,7 +544,7 @@ export const UserService = {
       throw new Error(e?.message || "Failed to send SMS");
     }
 
-    return { phone: e164, message: "OTP sent to new phone number" };
+    return { phone: last10, message: "OTP sent to new phone number" };
   },
 
   verifyPhoneChange: async (user_id, { otp }) => {
@@ -588,17 +565,9 @@ export const UserService = {
       throw new Error("Invalid OTP");
     }
 
-    // Double-check duplicate at time of verify
-    const digits = digitsOnly(user.pendingPhone);
-    const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+    // Duplicate check using stored digits only
     const duplicate = await User.findOne({
-      $or: [
-        { phone: user.pendingPhone },
-        { phone: digits },
-        { phone: last10 },
-        { phone: `+91${last10}` },
-        { phone: `91${last10}` },
-      ],
+      phone: user.pendingPhone,
       _id: { $ne: user_id },
     }).lean();
     if (duplicate) throw new Error("Phone number already in use");
