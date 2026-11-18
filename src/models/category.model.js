@@ -51,6 +51,7 @@ const CategorySchema = new mongoose.Schema(
       of: String,
       default: {},
     },
+    ancestors: [{ type: mongoose.Schema.Types.ObjectId, ref: "Category" }],
   },
   { timestamps: true, versionKey: false },
 );
@@ -59,6 +60,26 @@ CategorySchema.index({ parent_id: 1, name: 1 }, { unique: true });
 CategorySchema.index({ category_type: 1 });
 CategorySchema.index({ parent_id: 1, display_order: 1 });
 CategorySchema.index({ status: 1, is_featured: 1 });
+CategorySchema.index({ ancestors: 1 });
+
+CategorySchema.pre("save", async function () {
+  if (!this.isNew && !this.isModified("parent_id")) return;
+
+  if (!this.parent_id) {
+    this.ancestors = [];
+    this.level = 1;
+    return;
+  }
+
+  const parent = await mongoose
+    .model("Category")
+    .findById(this.parent_id)
+    .select("ancestors level");
+  if (!parent) throw new Error("Parent category not found");
+
+  this.ancestors = [...parent.ancestors, parent._id];
+  this.level = parent.level + 1;
+});
 
 const Category = mongoose.model("Category", CategorySchema);
 

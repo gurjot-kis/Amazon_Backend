@@ -1,9 +1,5 @@
 import mongoose from "mongoose";
 
-// Required only for NON-variant products.
-// For save()/create() `this` is the document. For update validators
-// (findByIdAndUpdate + runValidators) `this` is a Query, so we skip the
-// check there and let ProductService do the validation.
 const requiredUnlessVariants = function () {
   return this instanceof mongoose.Document ? !this.hasVariants : false;
 };
@@ -79,7 +75,7 @@ const ProductSchema = new mongoose.Schema(
     stock: {
       type: Number,
       min: 0,
-      default: 0, // for variant products this is the sum of variant stock
+      default: 0,
     },
     stockStatus: {
       type: String,
@@ -129,6 +125,25 @@ const ProductSchema = new mongoose.Schema(
       trim: true,
       default: undefined,
     },
+
+    brand_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Brand",
+      default: null,
+    },
+    attributes: [
+      {
+        _id: false,
+        key: { type: String, required: true, trim: true, lowercase: true },
+        value: { type: String, trim: true },
+        num_value: { type: Number },
+      },
+    ],
+    min_price: { type: Number, min: 0, default: 0 },
+    max_price: { type: Number, min: 0, default: 0 },
+    variant_option_ids: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "VariantOption" },
+    ],
   },
   { timestamps: true, versionKey: false },
 );
@@ -141,12 +156,15 @@ ProductSchema.pre("save", async function () {
       .replace(/[^a-z0-9\s-]/g, "")
       .replace(/\s+/g, "-");
   }
+
+  if (!this.hasVariants && this.price != null) {
+    this.min_price = this.price;
+    this.max_price = this.price;
+  }
 });
 
 ProductSchema.index({ category_id: 1 });
 ProductSchema.index({ status: 1 });
-// partial: products without a SKU (variant products) are not indexed,
-// so many of them can exist without a duplicate-null error
 ProductSchema.index(
   { sku: 1 },
   { unique: true, partialFilterExpression: { sku: { $gt: "" } } },
@@ -154,6 +172,15 @@ ProductSchema.index(
 ProductSchema.index({ slug: 1 }, { unique: true });
 ProductSchema.index({ stockStatus: 1, status: 1 });
 ProductSchema.index({ hasVariants: 1 });
+ProductSchema.index({ category_id: 1, status: 1, brand_id: 1 });
+ProductSchema.index({ category_id: 1, status: 1, min_price: 1, max_price: 1 });
+ProductSchema.index({
+  category_id: 1,
+  status: 1,
+  "attributes.key": 1,
+  "attributes.value": 1,
+});
+ProductSchema.index({ variant_option_ids: 1 });
 
 const Product = mongoose.model("Product", ProductSchema);
 
