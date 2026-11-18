@@ -28,6 +28,7 @@ const buildAuthResponse = (user, token) => ({
   status: mapUserStatus(user.status),
   authProvider: user.authProvider,
   token,
+  store_id: user?.active_store_id ? String(user.active_store_id) : "",
 });
 
 export const SocialAuthService = {
