@@ -205,6 +205,16 @@ export const AuthService = {
     }).exec();
     if (!verification) throw new Error("Email not verified");
 
+    if (phone) {
+      const existingPhone = await User.findOne({
+        phone: String(phone).trim(),
+      }).exec();
+
+      if (existingPhone) {
+        throw new Error("Phone number already registered");
+      }
+    }
+
     const passwordHash = await bcrypt.hash(String(password), 10);
 
     const user = await User.create({
