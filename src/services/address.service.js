@@ -44,6 +44,7 @@ const mapAddress = (address) => ({
   phone: address.phone,
   addressLine1: address.addressLine1,
   addressLine2: address.addressLine2 || "",
+  label: address.label || "home",
   landmark: address.landmark || "",
   city: address.city,
   state: address.state,
@@ -133,6 +134,7 @@ export const AddressService = {
     phone,
     addressLine1,
     addressLine2,
+    label,
     landmark,
     city,
     state,
@@ -160,6 +162,7 @@ export const AddressService = {
       phone: normalizeString(phone),
       addressLine1: normalizeString(addressLine1),
       addressLine2: normalizeString(addressLine2),
+      label: normalizeString(label),
       landmark: normalizeString(landmark),
       city: normalizeString(city),
       state: normalizeString(state),
@@ -208,6 +211,7 @@ export const AddressService = {
     phone,
     addressLine1,
     addressLine2,
+    label,
     landmark,
     city,
     state,
@@ -246,6 +250,7 @@ export const AddressService = {
     address.phone = normalizeString(phone);
     address.addressLine1 = normalizeString(addressLine1);
     address.addressLine2 = normalizeString(addressLine2);
+    address.label = normalizeString(label);
     address.landmark = normalizeString(landmark);
     address.city = normalizeString(city);
     address.state = normalizeString(state);

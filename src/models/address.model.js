@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { ADDRESS_LABEL, ADDRESS_LABEL_VALUES } from "../constants/index.js";
 
 const AddressSchema = new mongoose.Schema(
   {
@@ -33,6 +34,11 @@ const AddressSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
+    },
+    label: {
+      type: String,
+      enum: ADDRESS_LABEL_VALUES,
+      default: ADDRESS_LABEL.HOME,
     },
     landmark: {
       type: String,
