@@ -57,18 +57,20 @@ const StoreSchema = new mongoose.Schema(
       type: {
         type: String,
         enum: ["Point"],
+        required: [true, "Store location is required"],
       },
       coordinates: {
         type: [Number],
         default: undefined,
+        required: [true, "Store coordinates are required"],
         validate: {
           validator: (v) =>
-            v === undefined ||
-            (v.length === 2 &&
-              v[0] >= -180 &&
-              v[0] <= 180 &&
-              v[1] >= -90 &&
-              v[1] <= 90),
+            Array.isArray(v) &&
+            v.length === 2 &&
+            v[0] >= -180 &&
+            v[0] <= 180 &&
+            v[1] >= -90 &&
+            v[1] <= 90,
           message: "Coordinates must be [longitude, latitude]",
         },
       },

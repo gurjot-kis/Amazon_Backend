@@ -201,10 +201,13 @@ const mapVendorOrder = (order, storeMap) => {
   const items = order.items || [];
   return {
     _id: idToString(order._id),
+    orderId: shortId(order._id),
     store: storeMap.get(idToString(order.store_id)) || null,
     items: items.map(mapItem),
     totalItems: items.reduce((acc, i) => acc + Number(i.quantity || 0), 0),
     vendorTotal: items.reduce((acc, i) => acc + Number(i.itemTotal || 0), 0),
+    billBreakdown: mapVendorBillBreakdown(order),
+    grandTotal: Number(order.grandTotal || 0),
     shippingAddress: mapShippingAddress(order.shippingAddress),
     paymentMethod: order.paymentMethod,
     paymentReceived: Number(order.paymentReceived || 0),
@@ -214,7 +217,6 @@ const mapVendorOrder = (order, storeMap) => {
     updatedAt: order.updatedAt,
   };
 };
-
 const getUserNameMap = async (orders) => {
   const ids = [
     ...new Set(orders.map((o) => idToString(o.user_id)).filter(Boolean)),
@@ -249,7 +251,7 @@ const mapOrderListItem = (order) => {
 };
 
 const VENDOR_LIST_FIELDS =
-  "store_id status paymentMethod paymentReceived createdAt " +
+  "store_id status grandTotal paymentMethod paymentReceived createdAt " +
   "shippingAddress.fullName shippingAddress.phone shippingAddress.city " +
   "items.name items.mainImage items.quantity items.itemTotal";
 
@@ -263,6 +265,7 @@ const mapVendorOrderListItem = (order, storeMap) => {
     city: order.shippingAddress?.city || "",
     totalItems: items.reduce((acc, i) => acc + Number(i.quantity || 0), 0),
     vendorTotal: items.reduce((acc, i) => acc + Number(i.itemTotal || 0), 0),
+    grandTotal: Number(order.grandTotal || 0),
     paymentMethod: order.paymentMethod,
     paymentReceived: Number(order.paymentReceived || 0),
     status: order.status,
@@ -271,6 +274,27 @@ const mapVendorOrderListItem = (order, storeMap) => {
     itemNames: items.slice(0, 2).map((i) => i.name),
     previewImage: items[0]?.mainImage || "",
     moreItems: Math.max(0, items.length - 2),
+  };
+};
+
+const mapVendorBillBreakdown = (order) => {
+  const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+  const couponDiscount = round2(order.coupon_discount);
+
+  return {
+    price_total: round2(order.price_total), // MRP total
+    discount: round2(order.discount), // MRP - selling price
+    items_total: round2(order.items_total), // sum of selling prices
+    handling_charge: round2(order.handling_charge), // platform fee
+    delivery_charge: round2(order.delivery_charge),
+    delivery_waived: Boolean(order.delivery_waived),
+    small_cart_charge: round2(order.small_cart_charge),
+    coupon: {
+      applied: couponDiscount > 0 || Boolean(order.coupon_code),
+      code: order.coupon_code || "",
+      discount: couponDiscount,
+    },
+    grandTotal: round2(order.grandTotal), // final payable amount
   };
 };
 

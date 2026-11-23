@@ -53,11 +53,14 @@ const removeFile = (fileUrl) => {
   fs.unlink(fullPath, () => {});
 };
 
-const parseLocation = (latitude, longitude) => {
+const parseLocation = (latitude, longitude, { required = false } = {}) => {
   const hasLat = !isBlank(latitude);
   const hasLng = !isBlank(longitude);
 
-  if (!hasLat && !hasLng) return null;
+  if (!hasLat && !hasLng) {
+    if (required) throw new Error("Latitude and longitude are required");
+    return null;
+  }
   if (hasLat !== hasLng) {
     throw new Error("Both latitude and longitude are required");
   }
@@ -160,7 +163,9 @@ export const StoreService = {
     if (!store_name) throw new Error("Store name is required");
     if (isBlank(body.address)) throw new Error("Address is required");
 
-    const location = parseLocation(body.latitude, body.longitude);
+    const location = parseLocation(body.latitude, body.longitude, {
+      required: true,
+    });
     await assertUniqueName(vendor_id, store_name);
 
     const timings =
@@ -176,7 +181,7 @@ export const StoreService = {
         doc[field] = clean(body[field]);
       }
     }
-    if (location) doc.location = location;
+    doc.location = location;
     if (timings) doc.timings = timings;
     if (images.store_logo) doc.store_logo = images.store_logo;
     if (images.store_banner) doc.store_banner = images.store_banner;
@@ -247,11 +252,10 @@ export const StoreService = {
       $set.verified_at = null;
     }
 
-    // Location: both empty = clear it, both valid = update it
     if (body.latitude !== undefined || body.longitude !== undefined) {
-      const location = parseLocation(body.latitude, body.longitude);
-      if (location) $set.location = location;
-      else $unset.location = "";
+      $set.location = parseLocation(body.latitude, body.longitude, {
+        required: true,
+      });
     }
 
     // Images: new upload replaces old; remove_* flags clear it
@@ -493,9 +497,8 @@ export const StoreService = {
     page,
     limit,
   }) => {
-    const location = parseLocation(latitude, longitude);
-    if (!location) throw new Error("Latitude and longitude are required");
-
+    const location = parseLocation(latitude, longitude, { required: true });
+    
     const radius = Number(radius_km);
     if (!Number.isFinite(radius) || radius <= 0 || radius > 100) {
       throw new Error("Radius must be between 0 and 100 km");
