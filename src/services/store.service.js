@@ -7,6 +7,8 @@ import { paginateAggregate } from "./pagination.service.js";
 import User from "../models/user.model.js";
 import Address from "../models/address.model.js";
 
+const DEFAULT_COUNTRY_CODE = "+91";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_ROOT = path.join(__dirname, "../uploads");
 const TEXT_FIELDS = [
@@ -41,6 +43,30 @@ const assertObjectId = (id, label = "ID") => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new Error(`Invalid ${label}`);
   }
+};
+
+const normalizeCountryCode = (value) => {
+  const s = String(value ?? "").trim();
+  if (!s) return DEFAULT_COUNTRY_CODE;
+  return s.startsWith("+") ? s : `+${s}`;
+};
+
+const withCountryCode = (store) =>
+  store
+    ? { ...store, countryCode: store.countryCode || DEFAULT_COUNTRY_CODE }
+    : store;
+
+// For aggregation pipelines
+const COUNTRY_CODE_FALLBACK_STAGE = {
+  $addFields: {
+    countryCode: {
+      $cond: [
+        { $gt: [{ $strLenCP: { $ifNull: ["$countryCode", ""] } }, 0] },
+        "$countryCode",
+        DEFAULT_COUNTRY_CODE,
+      ],
+    },
+  },
 };
 
 const isBlank = (v) => v === undefined || v === null || clean(v) === "";
@@ -96,7 +122,7 @@ const getOwnedStore = async (vendor_id, id) => {
   assertObjectId(id, "store ID");
   const store = await Store.findOne({ _id: id, vendor_id }).lean();
   if (!store) throw new Error("Store not found");
-  return store;
+  return withCountryCode(store);
 };
 
 const normalizePagination = (page, limit) => ({
@@ -182,6 +208,8 @@ export const StoreService = {
       }
     }
     doc.location = location;
+    doc.countryCode = normalizeCountryCode(body.countryCode);
+
     if (timings) doc.timings = timings;
     if (images.store_logo) doc.store_logo = images.store_logo;
     if (images.store_banner) doc.store_banner = images.store_banner;
@@ -192,8 +220,8 @@ export const StoreService = {
         { $set: { is_default: false } },
       );
     }
-
-    return Store.create(doc);
+    const created = await Store.create(doc);
+    return withCountryCode(created.toObject());
   },
 
   getMyStores: async (
@@ -211,6 +239,7 @@ export const StoreService = {
       [
         { $match: match },
         { $sort: { is_default: -1, createdAt: -1 } },
+        COUNTRY_CODE_FALLBACK_STAGE,
         { $limit: 1 },
       ],
       { page, limit },
@@ -283,6 +312,10 @@ export const StoreService = {
       }
     }
 
+    if (body.countryCode !== undefined) {
+      $set.countryCode = normalizeCountryCode(body.countryCode);
+    }
+
     // Default flag
     if (body.is_default !== undefined) {
       const wantsDefault = toBool(body.is_default);
@@ -313,7 +346,7 @@ export const StoreService = {
 
     // Delete replaced files only after the DB update succeeded
     filesToDelete.forEach(removeFile);
-    return updated;
+    return withCountryCode(updated);
   },
 
   setDefaultStore: async (vendor_id, id) => {
@@ -328,11 +361,12 @@ export const StoreService = {
       { vendor_id, is_default: true },
       { $set: { is_default: false } },
     );
-    return Store.findByIdAndUpdate(
+    const updatedStore = await Store.findByIdAndUpdate(
       id,
       { $set: { is_default: true } },
       { new: true },
     ).lean();
+    return withCountryCode(updatedStore);
   },
 
   toggleStoreStatus: async (vendor_id, id) => {
@@ -343,11 +377,12 @@ export const StoreService = {
     }
 
     const status = store.status === "active" ? "inactive" : "active";
-    return Store.findByIdAndUpdate(
+    const updatedStore = await Store.findByIdAndUpdate(
       id,
       { $set: { status } },
       { new: true },
     ).lean();
+    return withCountryCode(updatedStore);
   },
 
   deleteStore: async (vendor_id, id) => {
@@ -415,7 +450,7 @@ export const StoreService = {
       [
         { $match: match },
         { $sort: { createdAt: -1 } },
-        // Adjust collection and field names to your User model
+        COUNTRY_CODE_FALLBACK_STAGE,
         {
           $lookup: {
             from: "users",
@@ -423,7 +458,31 @@ export const StoreService = {
             foreignField: "_id",
             as: "vendor",
             pipeline: [
-              { $project: { name: 1, email: 1, phone: 1, profilePicture: 1 } },
+              {
+                $project: {
+                  name: 1,
+                  email: 1,
+                  countryCode: 1,
+                  phone: 1,
+                  profilePicture: 1,
+                },
+              },
+              {
+                $addFields: {
+                  countryCode: {
+                    $cond: [
+                      {
+                        $gt: [
+                          { $strLenCP: { $ifNull: ["$countryCode", ""] } },
+                          0,
+                        ],
+                      },
+                      "$countryCode",
+                      DEFAULT_COUNTRY_CODE,
+                    ],
+                  },
+                },
+              },
             ],
           },
         },
@@ -436,10 +495,15 @@ export const StoreService = {
   getStoreByIdForAdmin: async (id) => {
     assertObjectId(id, "store ID");
     const store = await Store.findById(id)
-      .populate("vendor_id", "name email phone profilePicture")
+      .populate("vendor_id", "name email countryCode phone profilePicture")
       .lean();
     if (!store) throw new Error("Store not found");
-    return store;
+
+    if (store.vendor_id) {
+      store.vendor_id.countryCode =
+        store.vendor_id.countryCode || DEFAULT_COUNTRY_CODE;
+    }
+    return withCountryCode(store);
   },
 
   updateVerificationStatus: async (
@@ -470,7 +534,7 @@ export const StoreService = {
       { new: true, runValidators: true },
     ).lean();
     if (!store) throw new Error("Store not found");
-    return store;
+    return withCountryCode(store);
   },
 
   updateStoreStatusByAdmin: async (id, status) => {
@@ -485,7 +549,7 @@ export const StoreService = {
       { new: true },
     ).lean();
     if (!store) throw new Error("Store not found");
-    return store;
+    return withCountryCode(store);
   },
 
   // ═════════════════════════ PUBLIC / CUSTOMER ═════════════════════════
@@ -498,7 +562,7 @@ export const StoreService = {
     limit,
   }) => {
     const location = parseLocation(latitude, longitude, { required: true });
-    
+
     const radius = Number(radius_km);
     if (!Number.isFinite(radius) || radius <= 0 || radius > 100) {
       throw new Error("Radius must be between 0 and 100 km");
@@ -581,7 +645,7 @@ export const StoreService = {
 
     const store_details = await Store.findById(storeId)
       .select(
-        "store_name store_description store_logo store_banner address state city location",
+        "store_name store_description store_logo store_banner countryCode phone address state city location",
       )
       .lean();
 
@@ -600,7 +664,7 @@ export const StoreService = {
     }));
 
     return {
-      store_details,
+      store_details: withCountryCode(store_details),
       user_address: updated_user_address,
     };
   },

@@ -35,7 +35,8 @@ export const AdminController = {
   updateProfile: async (req, res) => {
     try {
       const { user_id } = req.user;
-      const { fullName, email, phone, address, password } = req.body || {};
+      const { fullName, email, phone, countryCode, address, password } =
+        req.body || {};
       const profilePicture = req.file
         ? `/uploads/admin/${req.file.filename}`
         : undefined;
@@ -44,6 +45,7 @@ export const AdminController = {
         fullName,
         email,
         phone,
+        countryCode,
         address,
         password,
         profilePicture,

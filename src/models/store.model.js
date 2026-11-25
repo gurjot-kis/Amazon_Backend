@@ -33,6 +33,13 @@ const StoreSchema = new mongoose.Schema(
       match: [/^$|^\S+@\S+\.\S+$/, "Invalid email address"],
     },
 
+    countryCode: {
+      type: String,
+      default: "+91",
+      trim: true,
+      match: [/^\+\d{1,4}$/, "Invalid country code"],
+    },
+
     phone: {
       type: String,
       default: "",

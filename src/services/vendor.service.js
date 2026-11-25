@@ -3,14 +3,82 @@ import User from "../models/user.model.js";
 import { mapUserStatus, parseUserStatus } from "../utils/user-status.js";
 import validateObjectId from "../utils/validate-object-id.js";
 import { toObjectId } from "../utils/object-id.js";
+import sendEmail from "../utils/email.js";
+
+const DEFAULT_COUNTRY_CODE = "+91";
 
 const normalizeName = (value) => String(value).trim();
 const normalizeEmail = (value) => String(value).trim().toLowerCase();
+
+const normalizeCountryCode = (value) => {
+  const s = String(value ?? "").trim();
+  if (!s) return DEFAULT_COUNTRY_CODE;
+  return s.startsWith("+") ? s : `+${s}`;
+};
+
+const escapeHtml = (s) =>
+  String(s).replace(
+    /[&<>"']/g,
+    (c) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[c],
+  );
+
+const getSuperAdminEmails = async () => {
+  const admins = await User.find({ role: "SuperAdmin" })
+    .select("email")
+    .lean()
+    .exec();
+  const emails = admins.map((a) => a.email).filter(Boolean);
+  if (process.env.SUPERADMIN_EMAIL) emails.push(process.env.SUPERADMIN_EMAIL);
+  return [...new Set(emails)];
+};
+
+const sendVendorRegisteredEmail = async ({ vendor, plainPassword }) => {
+  try {
+    const bcc = await getSuperAdminEmails();
+    const name = escapeHtml(vendor.name);
+    const email = escapeHtml(vendor.email);
+    const phone = vendor.phone
+      ? `${escapeHtml(vendor.countryCode || DEFAULT_COUNTRY_CODE)} ${escapeHtml(vendor.phone)}`
+      : "-";
+
+    await sendEmail({
+      to: vendor.email,
+      bcc,
+      subject: "Vendor account created",
+      text:
+        `Hello ${vendor.name},\n\n` +
+        `Your vendor account has been created by the administrator.\n\n` +
+        `Email: ${vendor.email}\nPassword: ${plainPassword}\n\n` +
+        `Please log in and change your password.`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:560px">
+          <h2>Welcome, ${name}</h2>
+          <p>Your vendor account has been created by the administrator.</p>
+          <table cellpadding="6">
+            <tr><td><b>Email</b></td><td>${email}</td></tr>
+            <tr><td><b>Phone</b></td><td>${phone}</td></tr>
+            <tr><td><b>Password</b></td><td>${escapeHtml(plainPassword)}</td></tr>
+          </table>
+          <p>Please log in and change your password immediately.</p>
+        </div>`,
+    });
+  } catch (err) {
+    console.error("Vendor registration email failed:", err.message);
+  }
+};
 
 const buildVendorResponse = (v) => ({
   _id: v._id,
   fullName: v.name,
   email: v.email,
+  countryCode: v.countryCode || DEFAULT_COUNTRY_CODE,
   phone: v.phone || "",
   address: v.address || "",
   profilePicture: v.profilePicture || "",
@@ -23,6 +91,7 @@ const buildVendorProfileResponse = (vendor) => ({
   _id: vendor._id,
   fullName: vendor.name,
   email: vendor.email,
+  countryCode: vendor.countryCode || DEFAULT_COUNTRY_CODE,
   phone: vendor.phone || "",
   address: vendor.address || "",
   profilePicture: vendor.profilePicture || "",
@@ -129,7 +198,7 @@ export const VendorService = {
       _id: user_id,
       role: "Vendor",
     })
-      .select("user_id name email phone address createdAt")
+      .select("user_id name email countryCode phone address createdAt")
       .lean()
       .exec();
 
@@ -139,13 +208,21 @@ export const VendorService = {
       _id: vendor._id,
       fullName: vendor.name,
       email: vendor.email,
+      countryCode: vendor.countryCode || DEFAULT_COUNTRY_CODE,
       phone: vendor.phone,
       address: vendor.address,
       createdAt: vendor.createdAt,
     };
   },
 
-  addVendor: async ({ fullName, email, password, phone, address }) => {
+  addVendor: async ({
+    fullName,
+    email,
+    password,
+    countryCode,
+    phone,
+    address,
+  }) => {
     if (!fullName || !email || !password) {
       throw new Error("fullName, email, and password are required");
     }
@@ -159,12 +236,15 @@ export const VendorService = {
     const vendor = await User.create({
       name: normalizeName(fullName),
       email: normalizedEmail,
+      countryCode: normalizeCountryCode(countryCode),
       phone: phone ? String(phone).trim() : "",
       address: address ? String(address).trim() : "",
       role: "Vendor",
       passwordHash,
       isVendorVerified: false,
     });
+
+    sendVendorRegisteredEmail({ vendor, plainPassword: String(password) });
 
     return buildVendorResponse(vendor);
   },
@@ -174,6 +254,7 @@ export const VendorService = {
     fullName,
     email,
     password,
+    countryCode,
     phone,
     address,
   }) => {
@@ -198,6 +279,9 @@ export const VendorService = {
     vendor.email = normalizedEmail;
 
     if (password) vendor.passwordHash = await bcrypt.hash(String(password), 10);
+    if (countryCode !== undefined)
+      vendor.countryCode = normalizeCountryCode(countryCode);
+
     if (phone !== undefined) vendor.phone = String(phone).trim();
     if (address !== undefined) vendor.address = String(address).trim();
 
@@ -256,7 +340,7 @@ export const VendorService = {
       _id: String(user_id).trim(),
       role: "Vendor",
     })
-      .select("_id name email phone address profilePicture")
+      .select("_id name email countryCode phone address profilePicture")
       .lean()
       .exec();
 
@@ -272,6 +356,7 @@ export const VendorService = {
     name,
     email,
     phone,
+    countryCode,
     address,
     gst,
     code,
@@ -281,6 +366,7 @@ export const VendorService = {
     if (
       !name &&
       !email &&
+      countryCode === undefined &&
       phone === undefined &&
       address === undefined &&
       gst === undefined &&
@@ -349,6 +435,10 @@ export const VendorService = {
     // Profile picture
     if (profilePicture) {
       vendor.profilePicture = profilePicture;
+    }
+
+    if (countryCode !== undefined) {
+      vendor.countryCode = normalizeCountryCode(countryCode);
     }
 
     await vendor.save();

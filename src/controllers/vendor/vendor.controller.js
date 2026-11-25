@@ -34,7 +34,7 @@ export const VendorController = {
     try {
       const { user_id } = req.user;
 
-      const { name, email, phone, address, gst, code, password } =
+      const { name, email, phone, countryCode, address, gst, code, password } =
         req.body || {};
 
       const profilePicture = req.file
@@ -46,6 +46,7 @@ export const VendorController = {
         name,
         email,
         phone,
+        countryCode,
         address,
         gst,
         code,

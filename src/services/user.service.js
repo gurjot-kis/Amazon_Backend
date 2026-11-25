@@ -114,6 +114,7 @@ export const UserService = {
       user_id: u.user_id,
       fullName: u.name,
       email: u.email,
+      countryCode: u.countryCode || "+91",
       phone: u.phone || "",
       address: u.address || "",
       latitude:
