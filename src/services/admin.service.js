@@ -6,10 +6,19 @@ import Order from "../models/order.model.js";
 const normalizeEmail = (value) => String(value).trim().toLowerCase();
 const normalizeName = (value) => String(value).trim();
 
+const DEFAULT_COUNTRY_CODE = "+91";
+
+const normalizeCountryCode = (value) => {
+  const s = String(value ?? "").trim();
+  if (!s) return DEFAULT_COUNTRY_CODE;
+  return s.startsWith("+") ? s : `+${s}`;
+};
+
 const buildAdminResponse = (user) => ({
   user_id: user.user_id,
   fullName: user.name,
   email: user.email,
+  countryCode: user.countryCode || DEFAULT_COUNTRY_CODE,
   phone: user.phone || "",
   address: user.address || "",
   profilePicture: user.profilePicture || "",
@@ -21,7 +30,9 @@ export const AdminService = {
       user_id: String(user_id).trim(),
       role: "SuperAdmin",
     })
-      .select("user_id name email phone address profilePicture -_id")
+      .select(
+        "user_id name email countryCode phone address profilePicture -_id",
+      )
       .lean()
       .exec();
 
@@ -29,20 +40,14 @@ export const AdminService = {
       throw new Error("Admin not found");
     }
 
-    return {
-      user_id: admin.user_id,
-      fullName: admin.name,
-      email: admin.email,
-      phone: admin.phone || "",
-      address: admin.address || "",
-      profilePicture: admin.profilePicture || "",
-    };
+    return buildAdminResponse(admin);
   },
 
   updateProfile: async ({
     user_id,
     fullName,
     email,
+    countryCode,
     phone,
     address,
     password,
@@ -52,6 +57,7 @@ export const AdminService = {
       !fullName &&
       !email &&
       !phone &&
+      countryCode === undefined &&
       address === undefined &&
       !password &&
       !profilePicture
@@ -100,6 +106,10 @@ export const AdminService = {
 
     if (profilePicture) {
       admin.profilePicture = profilePicture;
+    }
+
+    if (countryCode !== undefined) {
+      admin.countryCode = normalizeCountryCode(countryCode);
     }
 
     await admin.save();
